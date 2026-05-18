@@ -1,0 +1,58 @@
+{
+  "name": "@aeon-ai-pay/aigateway",
+  "version": "0.1.0",
+  "description": "AI Agents discover, invoke, and settle paid LLMs, APIs, and Skills — starting with Skill Boss. No manual key setup. No prepayment. Pay-per-call via x402 or Agent Card.",
+  "type": "module",
+  "bin": {
+    "aigateway": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "scripts",
+    "docs",
+    "templates",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs",
+    "create-card": "node bin/cli.mjs create-card",
+    "create-image": "node bin/cli.mjs create-image",
+    "wallet-init": "node bin/cli.mjs wallet-init",
+    "wallet-topup": "node bin/cli.mjs wallet-topup",
+    "wallet-balance": "node bin/cli.mjs wallet-balance",
+    "release": "node scripts/release.mjs"
+  },
+  "dependencies": {
+    "@aeon-ai-pay/axios": "2.1.2",
+    "@aeon-ai-pay/evm": "2.1.4",
+    "@walletconnect/sign-client": "^2.17.0",
+    "axios": "^1.13.2",
+    "commander": "^13.0.0",
+    "qrcode-terminal": "^0.12.0",
+    "viem": "^2.39.0"
+  },
+  "engines": {
+    "node": ">=25"
+  },
+  "keywords": [
+    "agent-os",
+    "aigateway",
+    "agent-skills",
+    "x402",
+    "virtual-card",
+    "ai-image",
+    "skill-boss",
+    "crypto-payment",
+    "evm",
+    "bsc"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AEON-Project/aigateway.git"
+  },
+  "license": "MIT"
+}

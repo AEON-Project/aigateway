@@ -1,0 +1,155 @@
+#!/usr/bin/env node
+
+const [major] = process.versions.node.split(".").map(Number);
+if (major < 25) {
+  console.error(`aigateway requires Node.js >= 25. Current: v${process.versions.node}`);
+  console.error("Upgrade: https://nodejs.org/");
+  process.exit(1);
+}
+
+// WalletConnect v2 SDK 已知缺陷：relay 偶发 null WebSocket 帧导致
+// isJsonRpcPayload 内部 'id' in null 抛 TypeError，不影响业务流程，静默忽略
+process.on("uncaughtException", (err) => {
+  if (
+    err instanceof TypeError &&
+    err.message.includes("Cannot use 'in' operator") &&
+    err.stack?.includes("isJsonRpcPayload")
+  ) {
+    console.error("[WC guard] Caught null-frame TypeError via uncaughtException, ignored.");
+    return;
+  }
+  console.error(err);
+  process.exit(1);
+});
+
+import { Command } from "commander";
+import { checkForUpdates } from "../src/update-check.mjs";
+import { setLegacyMode, setVerboseMode, setQuietMode } from "../src/output.mjs";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CURRENT_VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
+checkForUpdates(CURRENT_VERSION);
+
+const program = new Command();
+
+const DEFAULT_APP_ID = "TEST000001";
+
+program
+  .name("aigateway")
+  .description("AEON AI Gateway — AI Agents discover, invoke, and settle paid LLMs, APIs, and Skills via x402 or Agent Card.")
+  .version(CURRENT_VERSION)
+  .option("--legacy-output", "Emit legacy JSON shape instead of the new envelope", false)
+  .option("--verbose", "Verbose stderr logs", false)
+  .option("--quiet", "Suppress non-error stderr logs", false)
+  .hook("preAction", (thisCommand) => {
+    const opts = thisCommand.opts();
+    setLegacyMode(opts.legacyOutput);
+    setVerboseMode(opts.verbose);
+    setQuietMode(opts.quiet);
+  });
+
+program
+  .command("wallet-init")
+  .description("Check / create the local session wallet (pure local, no on-chain, no QR)")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .action(async (opts) => {
+    const { initWallet } = await import("../src/commands/wallet-init.mjs");
+    return initWallet(opts);
+  });
+
+program
+  .command("wallet-topup")
+  .description("Top-up USDT (≥1 USDT floor / ≥5 USDT minimum per top-up) and one-time facilitator approve via WalletConnect")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--amount <usdt>", "USDT amount to top-up (presets: 5/10/20/50, or custom ≥5)")
+  .option("--private-key <key>", "Override EVM private key")
+  .action(async (opts) => {
+    const { topup } = await import("../src/commands/wallet-topup.mjs");
+    return topup(opts);
+  });
+
+program
+  .command("wallet-balance")
+  .description("Check local wallet USDT/BNB balance on BSC")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--private-key <key>", "Override EVM private key")
+  .action(async (opts) => {
+    const { wallet } = await import("../src/commands/wallet-balance.mjs");
+    return wallet(opts);
+  });
+
+program
+  .command("wallet-gas")
+  .description("Send BNB from main wallet to session key via WalletConnect (for withdraw / approve gas)")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--amount <bnb>", "BNB amount to send", "0.001")
+  .option("--project-id <id>", "WalletConnect Cloud project ID")
+  .action(async (opts) => {
+    const { gas } = await import("../src/commands/wallet-gas.mjs");
+    return gas(opts);
+  });
+
+program
+  .command("wallet-withdraw")
+  .description("Withdraw USDT and remaining BNB from session key back to main wallet")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--amount <usdt>", "USDT amount to withdraw (default: all)")
+  .option("--to <address>", "Override destination address")
+  .action(async (opts) => {
+    const { withdraw } = await import("../src/commands/wallet-withdraw.mjs");
+    return withdraw(opts);
+  });
+
+program
+  .command("create-card")
+  .description("Create a one-time virtual card by paying with USDT on BSC via x402")
+  .requiredOption("--amount <usd>", "Card amount in USD ($0.6 ~ $800)")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--topup-amount <usdt>", "USDT top-up amount when balance is insufficient (≥5)")
+  .option("--private-key <key>", "Override EVM private key")
+  .option("--poll", "Auto-poll status after creation", false)
+  .option("--dry-run", "Run all preflight checks but do not sign/transact", false)
+  .action(async (opts) => {
+    const { createCard } = await import("../src/commands/create-card.mjs");
+    return createCard(opts);
+  });
+
+program
+  .command("create-image")
+  .description("Generate an AI image via Skill Boss, paying with USDT on BSC via x402")
+  .requiredOption("--prompt <text>", "Image prompt text")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--aspect-ratio <ratio>", "Image aspect ratio", "16:9")
+  .option("--output-format <fmt>", "Image format (png/jpeg/webp)", "png")
+  .option("--model <id>", "Model identifier")
+  .option("--output <dir>", "Output directory (default ~/aigateway-images)")
+  .option("--topup-amount <usdt>", "USDT top-up amount when balance is insufficient (≥5)")
+  .option("--private-key <key>", "Override EVM private key")
+  .action(async (opts) => {
+    const { createImage } = await import("../src/commands/create-image.mjs");
+    return createImage(opts);
+  });
+
+program
+  .command("create-card-status")
+  .description("Query the status of a virtual card created via create-card")
+  .requiredOption("--order-no <orderNo>", "Order number returned by create-card")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--poll", "Poll until terminal status", false)
+  .action(async (opts) => {
+    const { status } = await import("../src/commands/create-card-status.mjs");
+    return status(opts);
+  });
+
+program
+  .command("clean")
+  .description("Remove skill, uninstall package, and clear npm/npx cache")
+  .action(async () => {
+    const { clean } = await import("../src/commands/clean.mjs");
+    return clean();
+  });
+
+program.parse();

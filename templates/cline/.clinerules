@@ -1,0 +1,53 @@
+# aigateway — Virtual Card via x402
+
+Trigger this rule when the user wants to create / query / manage one-time virtual debit cards funded via USDT on BSC.
+
+## Setup (run once)
+
+```bash
+aigateway wallet-init
+```
+
+`envelope.data.ready === true` means ready.
+
+## Commands
+
+```bash
+aigateway create-card --amount <USD> --poll                      # Create card, poll until ready
+aigateway create-card --amount <USD> --app-id <merchantId> --poll # With merchant app ID
+aigateway create-card-status --order-no <orderNo>                       # Single status query
+aigateway create-card-status --order-no <orderNo> --poll                # Poll until terminal
+aigateway wallet-balance                                            # Show local wallet balance
+aigateway wallet-topup --amount <USDT>                             # WalletConnect: USDT top-up
+aigateway wallet-gas --amount <BNB>                                # WalletConnect: BNB gas top-up
+aigateway wallet-withdraw [--to 0x...] [--amount <USDT>]           # Reclaim funds
+```
+
+## Envelope
+
+stdout = one line of JSON.
+
+- Success: `{ "ok": true, "command": ..., "data": { ... } }`
+- Failure: `{ "ok": false, "command": ..., "error": { "code": ..., "message": ..., ... } }`
+
+Branch on `error.code`. Exit codes: `0`/`1`/`2`/`3`/`4` = success/user/timeout/service/internal.
+
+## Hard Rules
+
+- No private keys from the user.
+- No full card numbers, CVV, or expiry in output (already sanitized).
+- WalletConnect-opening commands (`create-card` / `create-image` when underfunded / `wallet-init` / `wallet-gas`) must run in foreground.
+- No auto-retry on `PAYMENT_REJECTED` or `PAYMENT_TIMEOUT`.
+
+## Recovery Cheatsheet
+
+| Code | Action |
+| --- | --- |
+| `AMOUNT_OUT_OF_RANGE` | Show `error.min`/`error.max`; ask user. |
+| `INSUFFICIENT_USDT` | `aigateway wallet-init` then retry. |
+| `INSUFFICIENT_BNB` | `aigateway wallet-gas` then retry. |
+| `POLL_TIMEOUT` | Note `orderNo`; query later. |
+| `PAYMENT_REJECTED` / `PAYMENT_TIMEOUT` | Ask user before retrying. |
+| `SERVICE_UNAVAILABLE` | Exponential backoff retry. |
+
+Full reference: `docs/output-schema.md`, `docs/exit-codes.md`, `docs/recipes/`.

@@ -1,0 +1,60 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0] — 2026-05-18
+
+Initial release of **AEON AI Gateway**, merging the prior `@aeon-ai-pay/aicard` and `@aeon-ai-pay/agentos` projects into a single unified CLI and agent skill.
+
+### Added
+
+- Unified CLI surface (`aigateway`) supporting both **virtual card** and **AI image** capabilities backed by a shared session-key wallet.
+- Commands:
+  - `wallet-init` — pure-local session-wallet check / auto-create (no QR, no on-chain).
+  - `wallet-topup` — WalletConnect USDT top-up (≥5 USDT, presets 5/10/20/50) + one-time facilitator approve.
+  - `wallet-balance` — query session-key USDT / BNB balance + saved main wallet.
+  - `wallet-gas` — main wallet → session BNB transfer (for withdraw gas).
+  - `wallet-withdraw` — on-chain reclaim of USDT + BNB back to main wallet.
+  - `create-card` — x402-paid virtual debit card issuance ($0.6 ~ $800), `--poll` and `--dry-run` supported.
+  - `create-image` — x402-paid Skill Boss image generation, with prompt / aspect-ratio / format / model controls.
+  - `create-card-status` — query the status of a `create-card` order.
+  - `clean` — uninstall skill and clear npm/npx caches.
+- Stable JSON envelope on stdout for every command: `{ ok, command, version, data | error }`.
+- Stable `error.code` taxonomy (24 codes) mapped to four exit-code categories: `1` user / `2` timeout / `3` service / `4` internal.
+- `--app-id <id>` on every command (default `TEST000001`) for merchant attribution.
+- `--legacy-output` flag for consumers still parsing the pre-envelope JSON shape.
+- `--verbose` / `--quiet` global logging controls.
+- `--dry-run` on `create-card` for preflight validation without signing or transacting.
+- Foreground auto-upgrade via `src/update-check.mjs`: every CLI invocation checks `npm view` and silently background-installs the new version + re-syncs the skill via `postinstall`.
+- Multi-IDE adoption templates under `templates/` for Cursor, Windsurf, Cline / Roo Code, and Codex.
+- Agent skill at `skills/aigateway/SKILL.md` with end-user workflow, copy-exact templates, and decision routing.
+- Developer documentation:
+  - `docs/output-schema.md` — full envelope schema per command.
+  - `docs/exit-codes.md` — exit code + `error.code` reference.
+  - `docs/env-vars.md` — environment variable reference.
+  - `docs/troubleshooting.md` — common issues & remedies.
+  - `docs/release-process.md` — release workflow + version lock-step rules.
+  - `docs/ide-setup.md` — manual IDE adoption guide.
+  - `docs/recipes/integrate-in-agent.md` — generic spawn-and-parse Node.js / Python wrappers.
+  - `docs/recipes/error-recovery.md` — recovery actions per error code.
+  - `docs/recipes/cron-issue-cards.md` — scheduled paid calls.
+  - `docs/recipes/merchant-integration.md` — merchant integration patterns (user-managed vs. custodial wallet).
+
+### Removed (compared to upstream `aicard` / `agentos`)
+
+- `setup --check` (folded into the new `wallet-init` command).
+- `setup --service-url` / per-command `--service-url` flag (use `AIGATEWAY_SERVICE_URL` env var instead).
+- `aicard topup` (renamed to `wallet-topup`).
+- `agentos prepare` (folded into `wallet-topup`).
+- `aicard create` (renamed to `create-card`).
+- `aicard wallet` / `aicard gas` / `aicard withdraw` (renamed to `wallet-balance` / `wallet-gas` / `wallet-withdraw`).
+- `aicard status` (renamed to `create-card-status` to match `create-card-*` naming).
+- `INVALID_USAGE` error code (no longer needed after `setup` simplification).
+
+[Unreleased]: https://github.com/AEON-Project/aigateway/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/AEON-Project/aigateway/releases/tag/v0.1.0
