@@ -16,7 +16,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.1.0"
+  version: "0.1.1"
   author: AEON-Project
   openclaw:
     requires:
@@ -73,13 +73,13 @@ See [docs/output-schema.md](../../docs/output-schema.md) and [docs/exit-codes.md
 ## Command Overview
 
 ```bash
-aigateway wallet-init                             # Pre-check / auto-create local session wallet (no QR)
+aigateway wallet-init                             # Pre-check / create wallet AND report needsTopup status (one-stop pre-flight)
 aigateway wallet-topup [--amount <usdt>]          # WalletConnect: top-up USDT (≥5; presets 5/10/20/50) + first-time facilitator approve
 aigateway create-card --amount <usd> --poll       # Issue a virtual card ($0.6 ~ $800)
 aigateway create-image --prompt "<text>"          # Generate AI image
 aigateway create-card-status --order-no <orderNo> [--poll]    # Query card status
-aigateway wallet-balance                          # Check local wallet balance
-aigateway wallet-gas [--amount <bnb>]                    # Top up BNB for session key (for withdraw)
+aigateway wallet-balance                          # (optional) Re-query balance — agent rarely needs this; wallet-init already reports it
+aigateway wallet-gas [--amount <bnb>]             # Top up BNB for session key (for withdraw)
 aigateway wallet-withdraw [--to <addr>] [--amount <usdt>]   # Reclaim funds
 aigateway clean                                   # Uninstall skill, clear cache
 ```
@@ -104,33 +104,70 @@ Output template:
 > Pre-check in progress...
 ```
 
-`envelope.data`: `{ ready, created, mode, address, mainWallet, serviceUrl, amountLimits }`.
+### If `aigateway` is not found (exit 127 / "command not found")
 
-- `created: true` → "Auto-creating your designated wallet..." + then "0x0...{last4} Ready."
-- `created: false`, `ready: true` → "0x0...{last4} Ready."
-- Record `amountLimits.{min,max}` for any subsequent card amount validation.
+The CLI hasn't been installed on this host yet. Output to the user **verbatim**:
+
+```
+> Installing aigateway...
+```
+
+Then run **in the foreground** (this can take 30–60 seconds; do **not** background it):
+
+```bash
+npm install -g @aeon-ai-pay/aigateway
+```
+
+After install completes, re-run `aigateway wallet-init`. If `npm install` itself fails (network / permissions), surface the raw error and ask the user to fix their npm environment.
+
+### Envelope on success
+
+`envelope.data` (full shape):
+
+```json
+{
+  "ready": true,
+  "created": false,
+  "address": "0x...",
+  "mainWallet": "0x..." | null,
+  "usdt": "5.0",
+  "bnb": "0.0003",
+  "allowance": "115792...max" | "0",
+  "needsTopup": false,
+  "topupReason": null | "no_prior_funding" | "low_balance" | "no_approve",
+  "minTopup": 5,
+  "presets": [5, 10, 20, 50],
+  "amountLimits": { "min": 0.6, "max": 800 }
+}
+```
+
+### Decision tree (this is the whole pre-flight)
+
+| Field | Action |
+| --- | --- |
+| `created: true` | "Auto-creating your designated wallet..." + "0x0...{last4} Ready." |
+| `created: false`, `ready: true` | "0x0...{last4} Ready." |
+| **`needsTopup: true`** | **Go to Step 2 immediately.** Use `presets` / `minTopup` from this envelope (don't hardcode). |
+| `needsTopup: false` | Wallet has enough USDT and is approved. **Skip Step 2** and jump straight to the user's intent (`create-card` / `create-image` / other). |
+
+Record `amountLimits.{min,max}` for any subsequent card amount validation.
 
 ---
 
-## Step 2: Top up (First-Time Funding + Approve)
+## Step 2: Top up (only if Step 1's envelope says `needsTopup: true`)
 
-Trigger: any of (first paid call) | (`wallet-balance` shows < 1 USDT) | (user explicitly wants to "top up" / "load wallet" / "add funds").
-
-```bash
-aigateway wallet-topup                            # Interactive top-up amount prompt (TTY only)
-aigateway wallet-topup --amount 5                 # Non-interactive (recommended for agent invocations)
-```
-
-### When does topup do nothing?
-
-If `wallet` shows USDT ≥ 1 **and** allowance is already non-zero **and** the user did not explicitly ask to add funds, skip Step 2 entirely.
+Trigger: `wallet-init` envelope reports `needsTopup: true` (any of `no_prior_funding` / `low_balance` / `no_approve`), **or** the user explicitly asks to top up / load funds.
 
 ### Amount selection
 
 - Presets: **5 / 10 / 20 / 50 USDT**. Custom amounts must be ≥ 5 USDT.
-- If user said "top up" without an amount, use this exact copy and ask:
+- Ask the user **before** running the command:
   > How much USDT would you like to load? (presets: 5 / 10 / 20 / 50, or any custom amount ≥ 5)
-- Once the user picks an amount, run with `--amount <n>`.
+- Once the user picks an amount, run:
+
+```bash
+aigateway wallet-topup --amount <n>     # always pass --amount in agent context
+```
 
 ### Output template
 
@@ -151,8 +188,8 @@ Approve:   {approveTx truncated or "already approved"}
 
 | `error.code` | Action |
 | --- | --- |
-| `TOPUP_REQUIRED` (non-TTY, balance < 1 USDT) | Ask user for amount (presets in `error.presets`), then rerun with `--amount <n>`. |
-| `TOPUP_AMOUNT_TOO_SMALL` | Show `error.minTopup`, ask again. |
+| `TOPUP_REQUIRED` (would only happen if you skipped Step 2) | Bug in agent — should have asked for amount in Step 3. Ask now, then rerun with `--amount <n>`. |
+| `TOPUP_AMOUNT_TOO_SMALL` | Show `error.minTopup`, ask the user for a larger amount. |
 | `PAYMENT_REJECTED` | User cancelled in wallet. **Do not auto-retry**; ask user. |
 | `PAYMENT_TIMEOUT` | 5-minute WalletConnect window expired. **Do not auto-retry**; ask user. |
 | `INSUFFICIENT_BNB` (post-funding) | Run `aigateway wallet-gas` (interactive) to add BNB, then retry. |
@@ -164,7 +201,7 @@ Approve:   {approveTx truncated or "already approved"}
 
 ## Step 3a: Create Virtual Card
 
-Trigger: user wants to **buy / create / get a virtual card**.
+Trigger: user wants to **buy / create / get a virtual card** *and* Step 1 envelope showed `needsTopup: false` (or Step 2 just completed successfully).
 
 ### Amount confirmation
 

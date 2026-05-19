@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-05-19
+
+### Changed
+- **`wallet-init` now reports full funding status**, not just local-key readiness. Envelope `data` adds:
+  `usdt`, `bnb`, `allowance`, `needsTopup`, `topupReason` (`no_prior_funding` / `low_balance` / `no_approve`),
+  `minTopup`, `presets`, `chainCheck`. Agents can decide the next step (`wallet-topup` vs. go straight to a paid
+  call) from this single envelope without a separate `wallet-balance` call.
+- **SKILL.md workflow re-ordered** so agents prompt the user for a top-up amount **before** invoking the first
+  paid command, eliminating the previous "try-create-card → fail with `TOPUP_REQUIRED` → ask amount" UX bug.
+- SKILL.md adds an "If `aigateway` is not found (exit 127)" fallback that instructs the agent to run
+  `npm install -g @aeon-ai-pay/aigateway` once and retry.
+
 ## [0.1.0] — 2026-05-18
 
 Initial release of **AEON AI Gateway**, merging the prior `@aeon-ai-pay/aicard` and `@aeon-ai-pay/agentos` projects into a single unified CLI and agent skill.
