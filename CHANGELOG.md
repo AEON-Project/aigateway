@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-05-19
+
+### Changed
+- **SKILL.md wording discipline**: `wallet-topup` ask and `create-card` ask now have
+  enforced lexical separation. Step 2 (`wallet-topup`) explicitly says "load USDT
+  **into your session wallet**" / "往**本地钱包**充值 USDT". Step 3a (`create-card`)
+  says "card **face value**" / "**开多少美元的卡** / 卡的面额", and explicitly
+  forbids translating it as "充值". Fixes a UX confusion where a user with a
+  funded wallet would be asked "请问您想充值多少美元到虚拟卡上?" and reasonably
+  wonder if it was another wallet top-up prompt.
+- New "Wording Discipline" section in SKILL.md `## Copy Constraints` to lock this in.
+
 ## [0.1.1] — 2026-05-19
 
 ### Changed
