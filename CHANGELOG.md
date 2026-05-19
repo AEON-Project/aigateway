@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-05-19
+
+### Changed
+- **Removed all Chinese-language content from source files**. All comments,
+  docstrings, log messages, and SKILL.md guidance are now English-only.
+  `normalizeWalletError` no longer matches CJK error strings from localised
+  wallet apps; those fall through to the generic `WALLET_ERROR` code.
+- SKILL.md's "Wording Discipline" section is now language-neutral: instead
+  of listing Chinese phrasings, it instructs translators to keep the "wallet
+  top-up" verb / noun lexically distinct from the "card face value" verb /
+  noun in every target language.
+
+### Removed
+- `test/create-logic.test.mjs` — stale unit tests inherited from `aicard`
+  that referenced internal functions removed during the merge (e.g.
+  `inlineWalletConnectTopup`, now replaced by `funding.mjs::fundSessionKey`).
+  The file was never published to npm (`test/` is not in `files`).
+
 ## [0.1.4] — 2026-05-19
 
 ### Added
@@ -44,14 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.1.2] — 2026-05-19
 
 ### Changed
-- **SKILL.md wording discipline**: `wallet-topup` ask and `create-card` ask now have
-  enforced lexical separation. Step 2 (`wallet-topup`) explicitly says "load USDT
-  **into your session wallet**" / "往**本地钱包**充值 USDT". Step 3a (`create-card`)
-  says "card **face value**" / "**开多少美元的卡** / 卡的面额", and explicitly
-  forbids translating it as "充值". Fixes a UX confusion where a user with a
-  funded wallet would be asked "请问您想充值多少美元到虚拟卡上?" and reasonably
-  wonder if it was another wallet top-up prompt.
-- New "Wording Discipline" section in SKILL.md `## Copy Constraints` to lock this in.
+- **SKILL.md wording discipline**: the `wallet-topup` and `create-card` prompts
+  now enforce strict lexical separation. Step 2 (`wallet-topup`) says "load USDT
+  **into your session wallet**"; Step 3a (`create-card`) says "card
+  **face value**" / "issue a card with how much". When translating to any
+  non-English language, the verb / noun for each concept must remain distinct
+  so users cannot conflate them.
+- New "Wording Discipline" section in SKILL.md `## Copy Constraints` to lock
+  this in.
 
 ## [0.1.1] — 2026-05-19
 

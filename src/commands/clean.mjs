@@ -8,7 +8,7 @@ export async function clean() {
   const home = homedir();
   const removed = [];
 
-  // 1. 用 skills CLI 移除（覆盖所有工具）
+  // 1. Remove via the skills CLI (covers every tool)
   try {
     execFileSync("npx", ["skills", "remove", "aigateway", "-g", "-y"], {
       stdio: "inherit",
@@ -17,7 +17,7 @@ export async function clean() {
     logInfo("Removed aigateway skill via skills CLI");
     removed.push("skills");
   } catch {
-    // skills CLI 不可用，手动清理 Claude Code
+    // skills CLI unavailable — clean Claude Code manually
     const skillDir = join(home, ".claude", "skills", "aigateway");
     if (existsSync(skillDir)) {
       rmSync(skillDir, { recursive: true, force: true });
@@ -26,7 +26,7 @@ export async function clean() {
     }
   }
 
-  // 2. 卸载全局包
+  // 2. Uninstall the global package
   try {
     execFileSync("npm", ["uninstall", "-g", "@aeon-ai-pay/aigateway"], {
       stdio: "inherit",
@@ -38,7 +38,7 @@ export async function clean() {
     logInfo("Global package not installed, skipping uninstall");
   }
 
-  // 3. 清理 npm 缓存
+  // 3. Clean npm cache
   try {
     execFileSync("npm", ["cache", "clean", "--force"], {
       stdio: "inherit",
@@ -50,7 +50,7 @@ export async function clean() {
     logError("Failed to clean npm cache, skipping");
   }
 
-  // 4. 清理 npx 缓存
+  // 4. Clean npx cache
   const npxCache = join(home, ".npm", "_npx");
   if (existsSync(npxCache)) {
     rmSync(npxCache, { recursive: true, force: true });

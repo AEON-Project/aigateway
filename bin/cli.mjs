@@ -7,8 +7,9 @@ if (major < 25) {
   process.exit(1);
 }
 
-// WalletConnect v2 SDK 已知缺陷：relay 偶发 null WebSocket 帧导致
-// isJsonRpcPayload 内部 'id' in null 抛 TypeError，不影响业务流程，静默忽略
+// Known WalletConnect v2 SDK quirk: the relay occasionally emits null WebSocket frames,
+// causing `'id' in null` inside isJsonRpcPayload to throw a TypeError. It does not
+// affect business logic, so silently ignore it.
 process.on("uncaughtException", (err) => {
   if (
     err instanceof TypeError &&

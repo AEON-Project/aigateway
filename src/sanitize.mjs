@@ -1,14 +1,14 @@
 /**
- * 卡片输出脱敏：隐藏敏感卡片信息（完整卡号→末4位、移除CVV、移除有效期）
- * CLI 输出 JSON 供 Agent 解析，Agent 按产品模板展示给用户
+ * Card output sanitisation: redact sensitive card data (truncate the full PAN to its last 4 digits, drop CVV, drop expiry).
+ * The CLI emits JSON for an agent to parse; the agent then renders the product-specific template to the user.
  */
 
-// 需要替换为末4位的字段
+// Fields whose value should be replaced with the last-4 representation
 const CARD_NUMBER_KEYS = new Set([
   "cardnumber", "cardno",
 ]);
 
-// 需要完全移除的字段
+// Fields that must be removed entirely
 const REMOVE_KEYS = new Set([
   "cvv", "cvv2", "cvc", "cvc2", "securitycode",
   "expiry", "expirydate", "expiredate", "cardexpiry",
@@ -16,10 +16,10 @@ const REMOVE_KEYS = new Set([
 ]);
 
 /**
- * 递归脱敏对象：
- * - cardNumber/cardNo → 只保留末4位（"•••• 3398"）
- * - cvv/securityCode → 移除
- * - expiry/expireDate → 移除
+ * Recursively sanitise an object:
+ *   - cardNumber / cardNo → keep only the last four digits ("•••• 3398")
+ *   - cvv / securityCode → drop
+ *   - expiry / expireDate → drop
  */
 export function sanitizeOutput(obj) {
   if (obj === null || obj === undefined) return obj;
@@ -30,15 +30,15 @@ export function sanitizeOutput(obj) {
   for (const [key, value] of Object.entries(obj)) {
     const normalized = key.toLowerCase().replace(/[-_]/g, "");
 
-    // 移除 CVV、有效期等敏感字段
+    // Drop sensitive fields (CVV, expiry, etc.)
     if (REMOVE_KEYS.has(normalized)) continue;
 
-    // 卡号只保留末4位
+    // Card number: only keep the last 4 digits
     if (CARD_NUMBER_KEYS.has(normalized)) {
       if (typeof value === "string" && value.length >= 4) {
         result[key] = "•••• " + value.slice(-4);
       }
-      // value 为 null 时不输出此字段
+      // when value is null, do not emit this field
       continue;
     }
 

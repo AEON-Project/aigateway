@@ -1,9 +1,10 @@
 /**
- * 配置管理：~/.aigateway/config.json
- * 优先级：CLI 参数 > 环境变量 > config.json
+ * Config management: ~/.aigateway/config.json
+ * Resolution priority: CLI args > env vars > config.json
  *
- * AEON AI Gateway 统一使用同一个 x402 服务端（ai-api.aeon.xyz），
- * 不同能力（虚拟卡 / Skill Boss 调用）走不同的路径前缀。
+ * AEON AI Gateway uses a single x402 service (ai-api.aeon.xyz);
+ * different capabilities (virtual card / Skill Boss calls) share the host
+ * but use distinct path prefixes.
  */
 import { readFileSync, writeFileSync, mkdirSync, chmodSync } from "fs";
 import { join } from "path";
@@ -31,7 +32,7 @@ export function saveConfig(config) {
 }
 
 /**
- * 解析配置值，优先级：cliValue > envKey > config[configKey]
+ * Resolve a value with priority: cliValue > envKey > config[configKey]
  */
 export function resolve(cliValue, envKey, configKey) {
   if (cliValue) return cliValue;

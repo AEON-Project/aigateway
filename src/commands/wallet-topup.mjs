@@ -1,15 +1,15 @@
 /**
- * topup：充值 + 一次性 approve facilitator
+ * wallet-topup: top up the session wallet and run the one-time facilitator approve.
  *
- * 流程：
- *   1. 校验 session key 已存在（来自 aigateway wallet-init）
- *   2. 检查 USDT 余额 + facilitator allowance
- *   3. 如果 USDT < LOW_BALANCE_THRESHOLD（1 USDT）或 allowance == 0，触发 WalletConnect 充值
- *      - 充值 amount: TTY 模式交互选择 presets [5, 10, 20, 50] 或自定义；
- *                    非 TTY 模式需要传 --amount <usdt>，否则报 TOPUP_REQUIRED
- *      - 同时按需转 0.0003 BNB 用作 approve gas
- *   4. session key 自己广播 ERC20.approve(facilitator, MaxUint256)
- *   5. 重新查余额 / allowance，返回最终状态
+ * Flow:
+ *   1. Verify the session key exists (created earlier by `aigateway wallet-init`).
+ *   2. Check USDT balance + facilitator allowance.
+ *   3. If USDT < LOW_BALANCE_THRESHOLD (1 USDT) or allowance == 0, open WalletConnect to fund:
+ *      - Top-up amount: TTY mode picks interactively from presets [5, 10, 20, 50] or a custom value;
+ *                       non-TTY mode requires `--amount <usdt>`, otherwise TOPUP_REQUIRED is emitted.
+ *      - 0.0003 BNB is transferred too when an approve transaction is needed.
+ *   4. The session key broadcasts ERC20.approve(facilitator, MaxUint256) once.
+ *   5. Re-query balance / allowance and return the final state.
  */
 import { resolve } from "../config.mjs";
 import { getWalletBalance, getAllowance } from "../balance.mjs";
@@ -71,7 +71,7 @@ export async function topup(opts) {
   const needApprove = allowance === 0n;
   const needGas = needApprove && bnbRaw === 0n;
 
-  // 已就绪：余额够 + 已 approve
+  // Already prepared: balance is sufficient and facilitator is approved
   if (!needTopup && !needApprove) {
     logInfo("Wallet already prepared (balance ≥ minimum, facilitator approved).");
     const data = {
@@ -89,7 +89,7 @@ export async function topup(opts) {
     return;
   }
 
-  // 决定充值金额
+  // Decide the top-up amount
   let topupAmount = null;
   if (needTopup) {
     if (balanceLow) {
@@ -134,7 +134,7 @@ export async function topup(opts) {
     }
   }
 
-  // WalletConnect 充值（USDT + 按需 BNB gas）
+  // WalletConnect top-up (USDT + optional BNB for approve gas)
   if (needTopup || needGas) {
     const willTransfer = [];
     if (needTopup) willTransfer.push(`${topupAmount} USDT`);
@@ -161,7 +161,7 @@ export async function topup(opts) {
     }
   }
 
-  // session key 一次性 approve facilitator
+  // Session key broadcasts the one-time facilitator approve
   let approveTx = null;
   if (needApprove) {
     let postBnbRaw = bnbRaw;
@@ -193,7 +193,7 @@ export async function topup(opts) {
     }
   }
 
-  // 最终查余额 + allowance
+  // Final balance + allowance re-check
   let finalUsdt = usdt;
   let finalBnb = bnb;
   let finalAllowance = allowance;

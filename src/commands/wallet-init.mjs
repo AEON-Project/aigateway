@@ -1,16 +1,16 @@
 /**
- * wallet-init：本地 session 钱包 check / 创建 + 链上状态评估
+ * wallet-init: check / create the local session wallet and assess its on-chain status.
  *
- * 步骤：
- *   1. 若 ~/.aigateway/config.json 缺 privateKey → 用 viem.generatePrivateKey() 生成
- *   2. 查 USDT / BNB 余额（除非刚 created，则跳过查询直接判定为 needsTopup）
- *   3. 查 facilitator allowance（同上规则）
- *   4. 综合判定 needsTopup 与原因，返回完整就绪状态供 agent 决策
+ * Steps:
+ *   1. If ~/.aigateway/config.json has no privateKey → generate one with viem.generatePrivateKey().
+ *   2. Query USDT / BNB balance (skipped when the wallet was just created — it must be empty).
+ *   3. Query the facilitator allowance (same rule).
+ *   4. Decide needsTopup with the reason and return the full readiness state for the agent to act on.
  *
- * 设计意图：agent 跑完 wallet-init 一条命令就拿到决策依据：
- *   - data.ready=true 表示钱包私钥可用
- *   - data.needsTopup=true → 必须先 wallet-topup（envelope 里附带 presets / minTopup / reason）
- *   - data.needsTopup=false → 可直接 create-card / create-image
+ * Design intent: with a single wallet-init call, the agent gets every decision input it needs:
+ *   - data.ready=true → the session private key is usable
+ *   - data.needsTopup=true → wallet-topup must run first (the envelope includes presets / minTopup / reason)
+ *   - data.needsTopup=false → can proceed directly to create-card / create-image
  */
 import { loadConfig, saveConfig } from "../config.mjs";
 import { MIN_AMOUNT, MAX_AMOUNT } from "../constants.mjs";
@@ -41,7 +41,7 @@ export async function initWallet(opts) {
     logInfo(`Wallet: ${config.address}`);
   }
 
-  // 链上状态评估
+  // On-chain status check
   let usdt = "0";
   let bnb = "0";
   let usdtNum = 0;
@@ -50,7 +50,7 @@ export async function initWallet(opts) {
   let chainCheckError = null;
 
   if (created) {
-    // 刚建好的钱包余额必然为 0，跳过链上查询节省 ~500ms
+    // A freshly created wallet is guaranteed to be empty; skip the chain query to save ~500ms.
     logInfo("Fresh wallet — skipping balance lookup (assumed empty).");
   } else {
     try {
@@ -68,18 +68,19 @@ export async function initWallet(opts) {
     }
   }
 
-  // 决策：是否需要 topup —— 只看链上真实状态，不依赖 config.mainWallet 字段。
-  // 之前用 !config.mainWallet 当判断条件是错的：mainWallet 只是 withdraw 默认目标地址，
-  // 即使为 null（如用户外部转账 / 旧版本未记录），只要链上 USDT/allowance 充足就应该
-  // 直接允许付费调用，不要强制再走一次 wallet-topup。
+  // Decision: needsTopup. Use only real on-chain state — do NOT depend on config.mainWallet.
+  // The previous logic `created || !config.mainWallet` was wrong: mainWallet is purely the default
+  // destination for withdraw. If USDT / allowance on-chain are sufficient — even when mainWallet
+  // is null (external CEX deposit / older versions that didn't record it) — paid calls should be
+  // allowed without forcing another wallet-topup round.
   let needsTopup = false;
   let topupReason = null;
   if (created) {
-    // 刚生成的 session key 必然没钱，无需查链
+    // A freshly generated session key has no funds — no point querying the chain.
     needsTopup = true;
     topupReason = "first_time";
   } else if (!chainCheckOk) {
-    // 链上查询失败 —— 保守标记需要 topup 由用户决定下一步
+    // Chain probe failed — conservatively flag needsTopup so the user can decide what to do.
     needsTopup = true;
     topupReason = "chain_check_failed";
   } else if (usdtNum < LOW_BALANCE_THRESHOLD) {
@@ -102,7 +103,7 @@ export async function initWallet(opts) {
     bnb,
     allowance: allowance.toString(),
     needsTopup,
-    topupReason,            // "no_prior_funding" | "low_balance" | "no_approve" | null
+    topupReason,            // "first_time" | "low_balance" | "no_approve" | "chain_check_failed" | null
     minTopup: MIN_TOPUP_USDT,
     presets: TOPUP_PRESETS,
     amountLimits: { min: MIN_AMOUNT, max: MAX_AMOUNT },

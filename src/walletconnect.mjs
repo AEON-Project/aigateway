@@ -1,6 +1,6 @@
 /**
- * WalletConnect v2 封装模块
- * 用于通过 WalletConnect 协议连接用户钱包并发起交易
+ * WalletConnect v2 wrapper.
+ * Connects to the user's wallet over WalletConnect and submits transactions.
  */
 import { SignClient } from "@walletconnect/sign-client";
 import { encodeFunctionData, parseUnits } from "viem";
@@ -13,8 +13,9 @@ import { WC_CONNECT_TIMEOUT_MS, ERC20_TRANSFER_ABI, DEFAULT_WC_PROJECT_ID } from
 import { loadConfig, saveConfig } from "./config.mjs";
 
 /**
- * WalletConnect 流程抛出的错误，携带稳定 error code（PAYMENT_TIMEOUT / PAYMENT_REJECTED / WALLET_ERROR）。
- * Commands 层捕获后通过 emitErr 输出，无需关心底层细节。
+ * Error type thrown by the WalletConnect flow, carrying a stable error code
+ * (PAYMENT_TIMEOUT / PAYMENT_REJECTED / WALLET_ERROR). The Commands layer
+ * catches it and forwards it via emitErr; no caller needs to look at the underlying details.
  */
 export class WalletConnectError extends Error {
   constructor(code, message) {
@@ -24,7 +25,7 @@ export class WalletConnectError extends Error {
   }
 }
 
-// ============== 状态同步服务器（供浏览器页面轮询） ==============
+// ============== Status server (polled by the browser-side QR page) ==============
 
 let _status = { state: "waiting_scan" };
 let _server = null;
@@ -65,14 +66,14 @@ export function stopStatusServer() {
 
 const BSC_CHAIN_ID = "eip155:56";
 
-// QR 页面倒计时（与 WalletConnect 连接超时一致）
+// QR-page countdown (matches the WalletConnect connection timeout)
 const QR_EXPIRE_MS = 5 * 60 * 1000;
 
 /**
- * 生成 QR 码 HTML 页面并在浏览器中打开（按 Figma Ai card v1.2 设计稿）
+ * Generate the QR-code HTML page and open it in a browser (follows the Figma "AI card v1.2" design).
  * @param {string} uri - WalletConnect URI
- * @param {number} statusPort - 状态服务端口
- * @param {string|null} amount - 用户需要支付的 USDT 数量（如 "0.66"）
+ * @param {number} statusPort - port of the local status server
+ * @param {string|null} amount - USDT amount the user has to pay (e.g. "0.66")
  */
 function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB Chain(BEP20) only", gasAmount = null) {
   const html = `<!DOCTYPE html>
@@ -165,16 +166,16 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
   const EXPIRE_MS = ${QR_EXPIRE_MS};
   const startTime = Date.now();
 
-  // 倒计时 SVG 图标（Figma 导出 1:63 clock 16x16）- 使用 currentColor 跟随 .timer 颜色
+  // Clock countdown icon (exported from Figma 1:63, 16x16) — uses currentColor to track `.timer` color
   const CLOCK_SVG = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.667 8C14.667 11.68 11.68 14.667 8 14.667C4.32 14.667 1.334 11.68 1.334 8C1.334 4.32 4.32 1.333 8 1.333C11.68 1.333 14.667 4.32 14.667 8Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.476 10.12L8.409 8.887C8.049 8.674 7.756 8.16 7.756 7.74V5.007" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  // 提示 info 图标（Figma 导出 1:43 Icon 20x20）
+  // Info / hint icon (exported from Figma 1:43, 20x20)
   const INFO_SVG = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity="0.2" d="M10 18.333C14.6 18.333 18.331 14.602 18.331 10C18.331 5.397 14.6 1.666 10 1.666C5.395 1.666 1.664 5.397 1.664 10C1.664 14.602 5.395 18.333 10 18.333Z" fill="#737A86"/><path d="M10 13.333V10" stroke="#737A86" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 6.666H10.008" stroke="#737A86" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  // Loading 旋转图标（Figma 导出 1:50 loading-02 24x24）
+  // Loading spinner icon (exported from Figma 1:50 loading-02, 24x24)
   const LOADING_SVG = '<svg class="loading-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity=".7" d="M4.922 5l2.828 2.828" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/><path opacity=".6" d="M6 12H2" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/><path opacity=".5" d="M4.922 19.078l2.828-2.828" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/><path opacity=".4" d="M12 18v4" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/><path opacity=".3" d="M19.078 19.078L16.25 16.25" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/><path opacity=".2" d="M22 12h-4" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/><path opacity=".1" d="M19.078 5L16.25 7.828" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/><path opacity=".8" d="M12 2v4" stroke="#191B1F" stroke-width="2.5" stroke-linecap="round"/></svg>';
-  // 成功勾选
+  // Success checkmark
   const CHECK_SVG = '<div class="check-icon"><svg viewBox="0 0 14 14" fill="none"><path d="M3 7l3 3 5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
 
-  // 超时插图 SVG（从 Figma 导出）
+  // "Expired" illustration SVG (exported from Figma)
   const EXPIRED_SVG = \`<svg width="144" height="129" viewBox="0 0 144 129" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path opacity="0.1" d="M140.369 64.988C140.369 82.769 133.106 98.797 121.461 110.317C110.066 121.711 94.289 128.598 76.884 128.598C59.604 128.598 43.826 121.586 32.306 110.317C20.661 98.797 13.398 82.769 13.398 64.988C13.398 29.802 41.823 1.377 76.884 1.377C111.944 1.377 140.369 29.927 140.369 64.988Z" fill="#1A72F7"/>
 <path d="M134.859 23.291C137.695 23.291 139.993 20.992 139.993 18.157C139.993 15.321 137.695 13.023 134.859 13.023C132.024 13.023 129.725 15.321 129.725 18.157C129.725 20.992 132.024 23.291 134.859 23.291Z" fill="#E8F1FE"/>
@@ -194,7 +195,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
 <linearGradient id="pb2" x1="53.891" y1="104.557" x2="103.297" y2="105.207" gradientUnits="userSpaceOnUse"><stop stop-color="#DBDEE3" stop-opacity=".7"/><stop offset="1" stop-color="#DBDEE3"/></linearGradient>
 </defs></svg>\`;
 
-  // 拒绝插图 SVG（基于超时插图，替换时钟为 X 标记，橙色改红色）
+  // "Rejected" illustration SVG (variant of the expired illustration: clock swapped for an X, orange swapped for red)
   const REJECTED_SVG = \`<svg width="144" height="129" viewBox="0 0 144 129" fill="none" xmlns="http://www.w3.org/2000/svg">
 <path opacity="0.1" d="M140.369 64.988C140.369 82.769 133.106 98.797 121.461 110.317C110.066 121.711 94.289 128.598 76.884 128.598C59.604 128.598 43.826 121.586 32.306 110.317C20.661 98.797 13.398 82.769 13.398 64.988C13.398 29.802 41.823 1.377 76.884 1.377C111.944 1.377 140.369 29.927 140.369 64.988Z" fill="#1A72F7"/>
 <path d="M134.859 23.291C137.695 23.291 139.993 20.992 139.993 18.157C139.993 15.321 137.695 13.023 134.859 13.023C132.024 13.023 129.725 15.321 129.725 18.157C129.725 20.992 132.024 23.291 134.859 23.291Z" fill="#E8F1FE"/>
@@ -223,7 +224,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
 
   function fmtAmount(v) {
     if (v == null || v === '') return '';
-    // 完整显示原始金额（不做取整），去除末尾多余的 0，整数部分加千分位
+    // Render the full original amount (no rounding); trim trailing zeros and add thousands separators to the integer part
     const s = String(v);
     const neg = s.startsWith('-') ? '-' : '';
     const body = neg ? s.slice(1) : s;
@@ -233,7 +234,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     return neg + intWithComma + (decPart ? '.' + decPart : '') + ' ' + TOKEN;
   }
 
-  // ====== 页面渲染函数 ======
+  // ====== Page rendering helpers ======
 
   function renderQR(data) {
     const remaining = Math.max(0, EXPIRE_MS - (Date.now() - startTime));
@@ -250,22 +251,22 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
 
     const expireMin = Math.ceil(remaining / 60000);
 
-    // QR wrap: 圆角矩形路径从12点（顶部中心）出发，顺时针绘制
-    // canvas 200 + padding 12*2 = 224, 圆角 r=16, 描边偏移1px
+    // QR wrap: rounded-rectangle path starts at 12 o'clock (top center) and goes clockwise.
+    // canvas 200 + padding 12*2 = 224, corner radius r=16, stroke offset 1px
     const S = 224, R = 16, cx = S/2;
-    // 从顶部中心开始，顺时针绘制一圈回到起点（开放路径，不用 Z 闭合，避免 dash 环绕）
+    // Start at top center, draw clockwise back to the start (open path, no Z — avoids the dash wrapping around)
     const qrPath = 'M' + cx + ',1 H' + (S-1-R) + ' A' + R + ',' + R + ' 0 0 1 ' + (S-1) + ',' + (1+R) +
       ' V' + (S-1-R) + ' A' + R + ',' + R + ' 0 0 1 ' + (S-1-R) + ',' + (S-1) +
       ' H' + (1+R) + ' A' + R + ',' + R + ' 0 0 1 1,' + (S-1-R) +
       ' V' + (1+R) + ' A' + R + ',' + R + ' 0 0 1 ' + (1+R) + ',1 H' + cx;
-    // 用 pathLength=1000 统一长度，避免手算偏差
+    // Use pathLength=1000 so the dash math is exact (no hand-calculated drift)
     const PL = 1000;
     const progress = remaining / EXPIRE_MS;
     const dashOffset = -PL * (1 - progress);
 
-    // USDT 图标 SVG（绿色圆形 Tether 标志）
+    // USDT icon SVG (green circle Tether glyph)
     const USDT_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#26A17B"/><path d="M10.1 9.6c-.06 0-.33.02-.73.02-.32 0-.58-.01-.67-.02-1.32-.06-2.3-.3-2.3-.58 0-.29.98-.52 2.3-.58v.93c.09.01.36.02.68.02.38 0 .66-.01.72-.02v-.93c1.31.06 2.29.3 2.29.58 0 .28-.98.52-2.29.58zm0-.87v-.83h2.05V6.5H5.88v1.4h2.05v.83c-1.48.07-2.6.38-2.6.75 0 .37 1.12.68 2.6.75v2.69h1.07v-2.69c1.48-.07 2.59-.38 2.59-.75 0-.37-1.11-.68-2.59-.75z" fill="#fff"/></svg>';
-    // BNB 图标 SVG（黄色圆形 BNB 标志）
+    // BNB icon SVG (yellow circle BNB glyph)
     const BNB_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#F3BA2F"/><path d="M9 4.5L7.2 6.3l-1.8-1.8L9 1.2l3.6 3.3-1.8 1.8L9 4.5zm-4.5 4.5L2.7 7.2 4.5 5.4l1.8 1.8L4.5 9zm4.5 4.5l-1.8-1.8-1.8 1.8L9 16.8l3.6-3.3-1.8-1.8L9 13.5zm4.5-4.5l1.8 1.8-1.8 1.8-1.8-1.8 1.8-1.8zM10.8 9L9 7.2 7.2 9 9 10.8 10.8 9z" fill="#fff"/></svg>';
     const TOKEN_ICON = TOKEN === 'BNB' ? BNB_ICON : USDT_ICON;
 
@@ -307,7 +308,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
       '<div class="result-sub">' + (error || 'Something went wrong.') + '<br>Please try again.</div></div>';
   }
 
-  // ====== 状态机 ======
+  // ====== State machine ======
 
   const FINAL = ['confirmed', 'rejected', 'failed', 'expired'];
   let lastState = null;
@@ -339,7 +340,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
       stopTimer();
     } else {
       body.innerHTML = renderQR(data);
-      // 渲染 QR 码
+      // Render the QR code
       const qrEl = document.getElementById('qr');
       if (qrEl) {
         new QRious({ element: qrEl, value: URI, size: 200, backgroundAlpha: 1, background: '#ffffff', foreground: '#000000', level: 'M' });
@@ -361,13 +362,13 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     closeTimer = setTimeout(tick, 1000);
   }
 
-  // 初始渲染
+  // Initial render
   render(null);
 
-  // 倒计时刷新（每秒更新 timer）
+  // Countdown refresh (update timer every second)
   timerInterval = setInterval(() => {
     const remaining = EXPIRE_MS - (Date.now() - startTime);
-    // 后端已进入活跃状态（已连接/签名中/交易已提交），不触发页面过期
+    // Backend has entered an active state (connected / signing / tx-submitted); do not expire the page
     const ACTIVE = ['connected', 'signing', 'tx_submitted'];
     if (remaining <= 0 && !FINAL.includes(lastState) && !ACTIVE.includes(lastState)) {
       lastState = 'expired';
@@ -375,7 +376,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
       maybeAutoClose('expired');
       return;
     }
-    // 更新倒计时文字
+    // Update the countdown label
     const timerEl = document.querySelector('.timer');
     if (timerEl) {
       const expireMin = Math.ceil(Math.max(0, remaining) / 60000);
@@ -383,7 +384,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
       const hintSpan = document.querySelector('.hint-bar span');
       if (hintSpan) hintSpan.textContent = 'Expire in ' + expireMin + ' mins. This page will close automatically once the transfer is completed';
     }
-    // 更新 QR 边框倒计时进度（负值 → 从12点顺时针消失）
+    // Update the QR-border progress (negative offset → the dash recedes clockwise from 12 o'clock)
     const progressEl = document.getElementById('qr-progress');
     if (progressEl) {
       const PL = 1000;
@@ -392,7 +393,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     }
   }, 1000);
 
-  // 轮询后端状态
+  // Poll backend status
   async function poll() {
     if (stopped) return;
     try {
@@ -426,7 +427,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
 }
 
 /**
- * 初始化 WalletConnect SignClient
+ * Initialise the WalletConnect SignClient
  * @param {string} projectId - WalletConnect Cloud project ID
  */
 export async function initSignClient(projectId) {
@@ -446,8 +447,9 @@ export async function initSignClient(projectId) {
     ),
   ]);
 
-  // WalletConnect relay 偶发 null WebSocket 帧，导致 isJsonRpcPayload('id' in null) 崩溃
-  // 在 connection 层过滤掉 null payload，避免错误传播到 provider / request 链路
+  // WalletConnect relay occasionally emits null WebSocket frames, which crashes
+  // isJsonRpcPayload('id' in null). Filter null payloads at the connection layer so
+  // the error never reaches the provider / request chain.
   try {
     const conn = client.core.relayer.provider.connection;
     const _origEmit = conn.emit.bind(conn);
@@ -460,7 +462,7 @@ export async function initSignClient(projectId) {
     };
   } catch {}
 
-  // 清理残留 session + pairing（并行等待完成，确保 relay 状态干净后再建新连接）
+  // Tear down stale sessions + pairings (await in parallel to ensure the relay is clean before reconnecting)
   try {
     const sessions = client.session.getAll();
     if (sessions.length > 0) {
@@ -486,10 +488,10 @@ export async function initSignClient(projectId) {
 }
 
 /**
- * 连接钱包：展示 QR 码，等待用户扫码授权
+ * Connect to a wallet: render the QR code and wait for the user to approve via scan.
  * @param {SignClient} signClient
  * @param {number} statusPort
- * @param {string|null} amount - 需要展示的 USDT 金额（如 "0.66"）
+ * @param {string|null} amount - USDT amount to display (e.g. "0.66")
  * @returns {{ session: object, peerAddress: string }}
  */
 export async function connectWallet(signClient, statusPort, amount = null, token = "USDT", gasAmount = null) {
@@ -503,7 +505,7 @@ export async function connectWallet(signClient, statusPort, amount = null, token
     },
   });
 
-  // 生成 QR 码页面（含状态轮询）并在浏览器中打开
+  // Generate the QR-code page (with status polling) and open it in the browser
   openQRInBrowser(uri, statusPort, amount, token, "BNB Chain(BEP20) only", gasAmount);
   console.error("QR code opened in browser. Scan it with your wallet app.");
   console.error("Waiting for wallet approval...");
@@ -528,11 +530,11 @@ export async function connectWallet(signClient, statusPort, amount = null, token
 }
 
 /**
- * 请求 ERC-20 代币转账
+ * Request an ERC-20 token transfer
  * @param {SignClient} signClient
  * @param {object} session - WalletConnect session
  * @param {{ from: string, to: string, token: string, amount: string, decimals?: number }} params
- * @returns {string} 交易 hash
+ * @returns {string} transaction hash
  */
 export async function requestERC20Transfer(signClient, session, { from, to, token, amount, decimals = 18 }) {
   const value = parseUnits(amount, decimals);
@@ -554,7 +556,7 @@ export async function requestERC20Transfer(signClient, session, { from, to, toke
             from,
             to: token,
             data,
-            gas: "0xFDE8", // 65000 — ERC20 transfer 合约调用
+            gas: "0xFDE8", // 65000 — ERC20.transfer contract call
           },
         ],
       },
@@ -568,11 +570,11 @@ export async function requestERC20Transfer(signClient, session, { from, to, toke
 }
 
 /**
- * 请求原生 BNB 转账
+ * Request a native BNB transfer
  * @param {SignClient} signClient
  * @param {object} session
- * @param {{ from: string, to: string, value: string }} params - value 为 BNB 数量（如 "0.001"）
- * @returns {string} 交易 hash
+ * @param {{ from: string, to: string, value: string }} params - `value` is the BNB amount (e.g. "0.001")
+ * @returns {string} transaction hash
  */
 export async function requestNativeTransfer(signClient, session, { from, to, value }) {
   const weiValue = "0x" + parseUnits(value, 18).toString(16);
@@ -589,7 +591,7 @@ export async function requestNativeTransfer(signClient, session, { from, to, val
             from,
             to,
             value: weiValue,
-            gas: "0x5208", // 21000 — BNB 原生转账固定 gas
+            gas: "0x5208", // 21000 — fixed gas for a native BNB transfer
           },
         ],
       },
@@ -605,11 +607,11 @@ export async function requestNativeTransfer(signClient, session, { from, to, val
 const FINAL_LINGER_MS = 2000;
 
 /**
- * 通用钱包连接高阶函数：自动管理连接生命周期
- * - 启动状态服务器
- * - 扫码连接钱包
- * - 执行调用方的事务逻辑
- * - 无论成功失败，始终断开连接并清理
+ * Higher-order wallet-connect helper: manages the full connection lifecycle.
+ * - Starts the status server
+ * - Waits for the user to scan and connect their wallet
+ * - Runs the caller's transaction logic
+ * - Always disconnects and cleans up, whether the body succeeded or failed
  *
  * @param {{ amount?: string, projectId?: string }} opts
  * @param {(ctx: { signClient, session, peerAddress }) => Promise<void>} fn
@@ -629,7 +631,7 @@ export async function withWallet(opts, fn) {
 
     await fn({ signClient, session, peerAddress });
 
-    // 成功：写回 mainWallet
+    // Success: persist mainWallet so subsequent withdraws can default to it
     const config = loadConfig();
     config.mainWallet = peerAddress;
     saveConfig(config);
@@ -652,11 +654,11 @@ export async function withWallet(opts, fn) {
     await new Promise((r) => setTimeout(r, FINAL_LINGER_MS));
     stopStatusServer();
     if (signClient) {
-      // 断开当前 session
+      // Disconnect the current session
       if (session) {
         await disconnectSession(signClient, session);
       }
-      // 断开所有 pairing，确保钱包端不残留连接
+      // Disconnect every pairing so the wallet side has no lingering connection
       try {
         const pairings = signClient.core.pairing.pairings.getAll({ active: true });
         await Promise.allSettled(
@@ -672,19 +674,19 @@ export async function withWallet(opts, fn) {
 }
 
 /**
- * 标准化钱包错误消息：将已知的中文/多语言错误映射为统一英文
+ * Normalise wallet error messages: map known Chinese / multilingual error strings to a unified English form.
  * @param {Error} error
- * @returns {Error} 同一个 error 对象，message 已替换
+ * @returns {Error} the same error object with its `message` rewritten
  */
 export function normalizeWalletError(error) {
   const msg = error?.message || "";
   const patterns = [
-    // 拒绝类
-    { test: /拒绝|用户取消|User rejected|User denied|declined/i, replacement: "rejected" },
-    // 断开连接类
-    { test: /断开.*连接|断开.*DApp|disconnect.*DApp|session.*expired|session.*disconnected/i, replacement: "rejected" },
-    // 超时类
-    { test: /超时|timed?\s*out|timeout/i, replacement: "timed out" },
+    // Rejection patterns (English error strings only — localised wallets fall through to WALLET_ERROR)
+    { test: /User rejected|User denied|declined/i, replacement: "rejected" },
+    // Disconnect patterns
+    { test: /disconnect.*DApp|session.*expired|session.*disconnected/i, replacement: "rejected" },
+    // Timeout patterns
+    { test: /timed?\s*out|timeout/i, replacement: "timed out" },
   ];
   for (const { test, replacement } of patterns) {
     if (test.test(msg)) {
@@ -696,7 +698,7 @@ export function normalizeWalletError(error) {
 }
 
 /**
- * 断开 WalletConnect 会话
+ * Disconnect a WalletConnect session.
  * @param {SignClient} signClient
  * @param {object} session
  */
@@ -707,6 +709,6 @@ export async function disconnectSession(signClient, session) {
       reason: { code: 6000, message: "Session complete" },
     });
   } catch {
-    // 静默处理断开错误
+    // Silently ignore disconnect errors
   }
 }

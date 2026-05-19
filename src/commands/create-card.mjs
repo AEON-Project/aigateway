@@ -1,10 +1,10 @@
 /**
- * create-card：通过 x402 协议在 BSC 上用 USDT 支付，发一张一次性虚拟卡
+ * create-card: issue a one-time virtual card by paying with USDT on BSC over the x402 protocol.
  *
- * 服务端路径：GET {serviceUrl}/open/ai/x402/card/create?amount=<usd>&appId=<merchant>
- * 流程：fetch payment requirements → balance + allowance 检查
- *      → （余额不足时）走 funding.mjs/fundSessionKey 充值
- *      → x402 EIP-712 签名提交 → 可选轮询 status
+ * Server endpoint: GET {serviceUrl}/open/ai/x402/card/create?amount=<usd>&appId=<merchant>
+ * Flow: fetch payment requirements -> check balance + allowance
+ *       -> (if balance is insufficient) top up via funding.mjs/fundSessionKey
+ *       -> submit x402 EIP-712 signature -> optionally poll status
  */
 import { createX402Api, decodePaymentResponse, fetchPaymentRequirements } from "../x402.mjs";
 import { resolve } from "../config.mjs";
@@ -163,7 +163,7 @@ export async function createCard(opts) {
     return;
   }
 
-  // Dry-run：跑完前置检查就退出
+  // Dry-run: exit after preflight checks complete
   if (dryRun) {
     const preview = {
       dryRun: true,
@@ -191,7 +191,7 @@ export async function createCard(opts) {
     return;
   }
 
-  // WalletConnect 充值
+  // WalletConnect top-up
   if (needTopup || needGas) {
     logInfo("Funding flow triggered...");
     try {

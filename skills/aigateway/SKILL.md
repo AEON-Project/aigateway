@@ -16,7 +16,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.1.4"
+  version: "0.1.5"
   author: AEON-Project
   openclaw:
     requires:
@@ -163,11 +163,9 @@ Trigger: `wallet-init` envelope reports `needsTopup: true` (any of `no_prior_fun
 This is a **session-wallet top-up** in USDT (NOT card face value). Make the wording unambiguously about the wallet to avoid the user confusing it with the card face value asked in Step 3a.
 
 - Presets: **5 / 10 / 20 / 50 USDT**. Custom amounts must be ≥ 5 USDT.
-- Ask the user **before** running the command. **Make "wallet" / "钱包" explicit in the question:**
+- Ask the user **before** running the command. **Make the noun "wallet" explicit in the question** (when translating to other languages, the translated noun must also unambiguously mean *session wallet*, never *card*):
 
   > How much USDT would you like to load **into your session wallet**? (presets: 5 / 10 / 20 / 50, or any custom amount ≥ 5)
-
-  (Suggested Chinese phrasing: "请问要往**本地钱包**充值多少 USDT？预设 5 / 10 / 20 / 50，或自定义 ≥ 5。")
 
 - Once the user picks an amount, run:
 
@@ -211,12 +209,9 @@ Trigger: user wants to **buy / create / get a virtual card** *and* Step 1 envelo
 
 ### Amount confirmation
 
-This is the **card face value** the user wants to issue (NOT a wallet top-up). Amount must be in `amountLimits.min ~ amountLimits.max` (from Step 1; never hardcode). If user did not specify, ask once — **use the word "card face value" / "面额", never "充值" / "top up"** to avoid confusing it with the `wallet-topup` step:
+This is the **card face value** the user wants to issue (NOT a wallet top-up). Amount must be in `amountLimits.min ~ amountLimits.max` (from Step 1; never hardcode). If the user did not specify a value, ask once — use the phrase **"card face value"** (or in any non-English language, the equivalent for *the amount loaded onto a new card*), never the verb used for *wallet top-up*:
 
 > What card face value would you like to issue? Allowed range: ${min}~${max} USD.
-
-(Suggested Chinese phrasing: "请问要开多少美元的卡？允许范围 $${min} ~ $${max}。"
-**Do not** translate this as "充值多少美元" — that wording belongs to `wallet-topup` and confuses users.)
 
 Once specified, **execute immediately**.
 
@@ -460,11 +455,11 @@ Address rendering: always `0x0...{last4}` (first 3 + ellipsis + last 4 chars).
 
 ### Wording Discipline: "wallet top-up" vs "card face value"
 
-These two amounts are **different concepts** asked at **different steps**. Translators must keep them lexically distinct so users don't conflate them:
+These two amounts are **different concepts** asked at **different steps**. Translators (to any non-English language) must keep them **lexically distinct** so users do not conflate them:
 
-| Step | Concept | Required wording (English) | Suggested Chinese | Forbidden mix-ups |
-| --- | --- | --- | --- | --- |
-| Step 2 (`wallet-topup`) | USDT into the **session wallet** | "load USDT **into your session wallet**" | "往**本地钱包**充值 USDT" | Don't say "充值到卡里" / "load onto the card" — that's Step 3a |
-| Step 3a (`create-card`) | USD **face value** loaded onto a new card | "card **face value**" / "issue a card with how much" | "**开多少美元的卡** / 卡的面额" | Don't say "充值多少" / "充值到卡" without strong "card" qualifier — confuses with Step 2 |
+| Step | Concept | Required English wording | Forbidden mix-ups |
+| --- | --- | --- | --- |
+| Step 2 (`wallet-topup`) | USDT into the **session wallet** | "load USDT **into your session wallet**" | Never say "load onto the card" — that's Step 3a |
+| Step 3a (`create-card`) | USD **face value** loaded onto a new card | "card **face value**" / "issue a card with how much" | Never use the same verb you used for *wallet top-up* without a strong "card" qualifier |
 
-**Rule of thumb**: if the agent's question contains the word "充值" (top up), the noun *must* be "钱包" (wallet); if the question is about a card's amount, prefer "**面额**" or "**开多少美元的卡**", never "充值".
+**Rule of thumb**: if a question is about the *wallet* (Step 2), the target noun must mean *session wallet*. If a question is about a *card amount* (Step 3a), prefer wording that means *face value* / *the amount loaded onto a new card*. The verb for one concept must never be reused for the other concept in the same language.

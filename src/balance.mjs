@@ -1,5 +1,5 @@
 /**
- * 钱包余额查询（共享模块）
+ * Wallet balance lookup (shared module)
  */
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, formatUnits } from "viem";
@@ -42,8 +42,8 @@ function getClient() {
 }
 
 /**
- * 通过地址查询 BNB 和 USDT 余额（不需要私钥）
- * @param {string} address - EVM 地址
+ * Query BNB and USDT balance by address (no private key required).
+ * @param {string} address - EVM address
  */
 export async function getBalanceByAddress(address) {
   const client = getClient();
@@ -68,7 +68,7 @@ export async function getBalanceByAddress(address) {
 }
 
 /**
- * 通过私钥查询钱包 BNB 和 USDT 余额
+ * Query a wallet's BNB and USDT balance by private key.
  * @param {string} privateKey
  */
 export async function getWalletBalance(privateKey) {
@@ -77,9 +77,9 @@ export async function getWalletBalance(privateKey) {
 }
 
 /**
- * 查询 session key 对 facilitator 的 USDT allowance
- * @param {string} ownerAddress - session key 地址
- * @returns {bigint} 当前 allowance（wei）
+ * Query the session key's USDT allowance for the facilitator.
+ * @param {string} ownerAddress - session key address
+ * @returns {bigint} current allowance (in wei)
  */
 export async function getAllowance(ownerAddress) {
   const client = getClient();

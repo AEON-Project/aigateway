@@ -1,5 +1,5 @@
 /**
- * x402 协议客户端：初始化 EVM signer + x402Client
+ * x402 protocol client: initialise an EVM signer and an x402Client.
  */
 import { x402Client, wrapAxiosWithPayment, x402HTTPClient } from "@aeon-ai-pay/axios";
 import { registerExactEvmScheme } from "@aeon-ai-pay/evm/exact/client";
@@ -11,8 +11,8 @@ import { BSC_RPC_URL } from "./constants.mjs";
 import axios from "axios";
 
 /**
- * 创建已注册 EVM 签名的 x402 axios 客户端
- * @param {`0x${string}`} privateKey - EVM 私钥
+ * Build an x402 axios client with the EVM signer pre-registered.
+ * @param {`0x${string}`} privateKey - EVM private key
  * @returns {{ api: AxiosInstance, client: x402Client, address: string, getOrderNo: () => string|null }}
  */
 export function createX402Api(privateKey) {
@@ -39,8 +39,9 @@ export function createX402Api(privateKey) {
 
   const axiosInstance = axios.create();
 
-  // 在 wrapAxiosWithPayment 之前注册拦截器，
-  // 从 402 响应体中捕获 orderNo（服务端在 firstRequest 返回）
+  // Register the interceptor *before* wrapAxiosWithPayment so it can
+  // capture orderNo from the 402 response body (the server returns it
+  // on the first request).
   let capturedOrderNo = null;
   axiosInstance.interceptors.response.use(
     (response) => response,
@@ -63,11 +64,13 @@ export function createX402Api(privateKey) {
 }
 
 /**
- * 第一次发起 x402 请求（不带签名），从 402 响应中提取实际付款要求。
- * 同时保留完整的 402 响应数据和原始请求配置，供后续手动签名使用。
- * 字段名与 x402 v2 PaymentRequirements 标准对齐：asset、payTo、amount。
+ * Send the first x402 request (unsigned) and extract the real payment requirements
+ * from the 402 response.
+ * Also keeps the raw 402 response and the original request config so the caller can
+ * sign manually later.
+ * Field names follow the x402 v2 PaymentRequirements standard: asset, payTo, amount.
  *
- * 兼容 GET（card 路径）和 POST（image / Skill Boss 路径）。
+ * Supports both GET (card path) and POST (image / Skill Boss path).
  *
  * @param {string} url
  * @param {{ method?: "GET"|"POST", data?: any, headers?: object }} [options]
@@ -105,7 +108,7 @@ export async function fetchPaymentRequirements(url, options = {}) {
 }
 
 /**
- * 从响应头中解码 PAYMENT-RESPONSE（x402 v2）
+ * Decode the PAYMENT-RESPONSE response header (x402 v2).
  * @param {object} headers - axios response headers
  * @returns {object|null}
  */

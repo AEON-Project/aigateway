@@ -1,10 +1,10 @@
 /**
- * create-image：通过 x402 调用 Skill Boss 生成 AI 图像
+ * create-image: generate an AI image via Skill Boss using the x402 protocol.
  *
- * 服务端路径：GET {serviceUrl}/open/ai/x402/skillBoss/create?body=<urlencoded-json>&appId=<merchant>
- * 流程：fetch payment requirements → balance + allowance 检查
- *      → （余额不足时）走 funding.mjs/fundSessionKey 充值
- *      → x402 EIP-712 签名提交 → 下载图片到本地
+ * Server endpoint: GET {serviceUrl}/open/ai/x402/skillBoss/create?body=<urlencoded-json>&appId=<merchant>
+ * Flow: fetch payment requirements -> check balance + allowance
+ *       -> (if balance is insufficient) top up via funding.mjs/fundSessionKey
+ *       -> submit x402 EIP-712 signature -> download the image locally
  */
 import { createX402Api, decodePaymentResponse, fetchPaymentRequirements } from "../x402.mjs";
 import { resolve } from "../config.mjs";

@@ -1,11 +1,11 @@
 /**
- * 自动版本检查 + 静默后台升级
+ * Auto version check + silent background upgrade.
  *
- * 策略：
- * 1. 同步快速检查（npm view）— 发现新版本时输出提示
- * 2. spawn 后台子进程执行 npm install -g 升级
- * 3. 升级后执行 postinstall.mjs（skills CLI 安装到所有工具）
- * 不阻塞主进程
+ * Strategy:
+ * 1. Synchronously poll the npm registry (`npm view`) — print a notice when a newer version is found.
+ * 2. Spawn a detached background process to run `npm install -g`.
+ * 3. After install, run postinstall.mjs (which re-installs the skill into every detected tool via the skills CLI).
+ * Does not block the main process.
  */
 
 import { execFileSync, spawn } from "node:child_process";
@@ -13,11 +13,11 @@ import { execFileSync, spawn } from "node:child_process";
 const PKG_NAME = "@aeon-ai-pay/aigateway";
 
 /**
- * 启动时调用：同步检查版本 + 后台升级
+ * Called at CLI startup: synchronous version probe + detached upgrade.
  * @param {string} currentVersion
  */
 export function checkForUpdates(currentVersion) {
-  // 同步快速检查最新版本（超时短，不阻塞太久）
+  // Synchronous fast probe (short timeout so it does not block too long)
   let latest;
   try {
     latest = execFileSync("npm", ["view", PKG_NAME, "version"], {
@@ -25,15 +25,15 @@ export function checkForUpdates(currentVersion) {
       stdio: ["ignore", "pipe", "ignore"],
     }).toString().trim();
   } catch {
-    return; // 网络不可用，静默跳过
+    return; // network unavailable — silently skip
   }
 
   if (!latest || latest === currentVersion) return;
 
-  // 有新版本：输出提示
+  // A newer version exists — print a notice
   console.error(`[update] ${PKG_NAME} ${currentVersion} → ${latest}, upgrading in background...`);
 
-  // 后台执行升级（结果写入日志文件）
+  // Run the upgrade in a detached child, writing the result to a log file
   const script = `
     const { execFileSync } = require("child_process");
     const { join } = require("path");

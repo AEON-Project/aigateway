@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * npm install -g 后自动安装 skill 到所有已检测的 AI 编码工具
+ * After `npm install -g`, automatically install the skill into every detected AI coding tool.
  *
- * 优先使用 `npx skills add` (Vercel Labs) 统一安装到所有工具
- * 失败时 fallback 到手动复制 Claude Code skills 目录
+ * Prefer `npx skills add` (Vercel Labs) so the skill is registered across all tools at once.
+ * If that fails, fall back to manually copying the skill into the Claude Code skills directory.
  */
 
 import { cpSync, existsSync, mkdirSync } from 'node:fs';
@@ -20,7 +20,7 @@ if (!existsSync(skillSrc)) {
   process.exit(0);
 }
 
-// 尝试用 skills CLI 安装到所有工具
+// Try installing into every tool via the skills CLI
 try {
   execFileSync('npx', ['skills', 'add', skillSrc, '-g', '-y', '--copy'], {
     stdio: 'inherit',
@@ -30,10 +30,10 @@ try {
   console.log('✔ aigateway skill installed via skills CLI (all detected tools)');
   process.exit(0);
 } catch {
-  // skills CLI 不可用或失败，fallback
+  // skills CLI unavailable or failed — fall back
 }
 
-// Fallback: 手动复制到 Claude Code
+// Fallback: copy manually into Claude Code
 const dest = join(homedir(), '.claude', 'skills', 'aigateway');
 mkdirSync(dirname(dest), { recursive: true });
 cpSync(skillSrc, dest, { recursive: true, force: true });

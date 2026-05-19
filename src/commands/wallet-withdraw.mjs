@@ -1,5 +1,5 @@
 /**
- * withdraw 命令：将 session key 中的资金转回主钱包（USDT + BNB）
+ * wallet-withdraw: move the session key's funds (USDT + BNB) back to the main wallet.
  */
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, encodeFunctionData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -54,7 +54,7 @@ export async function withdraw(opts) {
 
   const isWithdrawAll = !opts.amount;
 
-  // 无任何资金
+  // No funds at all
   if (balance.usdtRaw === 0n && balance.bnbRaw === 0n) {
     emitErr("wallet-withdraw", "NO_FUNDS", { message: "No funds to withdraw.", appId });
     return;
@@ -63,9 +63,9 @@ export async function withdraw(opts) {
   let usdtTxHash = null;
   let bnbTxHash = null;
 
-  // 1. 赎回 USDT（有 USDT 才执行）
+  // 1. Reclaim USDT (only when USDT balance > 0)
   if (balance.usdtRaw > 0n) {
-    // USDT 转账需要 BNB 作 gas
+    // USDT transfer needs BNB for gas
     if (balance.bnbRaw === 0n) {
       emitErr("wallet-withdraw", "INSUFFICIENT_BNB", {
         message: "No BNB for gas. Withdraw is a normal on-chain transfer and requires BNB to pay gas.",
@@ -119,7 +119,7 @@ export async function withdraw(opts) {
     }
   }
 
-  // 2. 赎回剩余 BNB（仅赎回全部时）
+  // 2. Reclaim remaining BNB (only when withdrawing everything)
   if (isWithdrawAll) {
     const freshBalance = balance.usdtRaw > 0n
       ? await getBalanceByAddress(sessionAddress)
@@ -128,7 +128,7 @@ export async function withdraw(opts) {
     if (freshBalance.bnbRaw > 0n) {
       try {
         const gasPrice = await publicClient.getGasPrice();
-        // 预留 20% buffer 应对 gas price 波动
+        // Reserve a 20% buffer to absorb gas-price fluctuations
         const gasCost = BNB_TRANSFER_GAS * (gasPrice * 120n / 100n);
         const sendable = freshBalance.bnbRaw - gasCost;
 
@@ -159,7 +159,7 @@ export async function withdraw(opts) {
     }
   }
 
-  // 查询最终余额
+  // Final balance lookup
   let finalBalance;
   try {
     finalBalance = await getBalanceByAddress(sessionAddress);

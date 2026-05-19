@@ -1,12 +1,13 @@
 /**
- * 统一输出封装：envelope JSON + 分级日志
+ * Unified output envelope: JSON on stdout + tiered stderr logs.
  *
- * stdout: 一行最终 JSON（machine-readable）
- *   - 成功：{ ok: true, command, version, data }
- *   - 失败：{ ok: false, command, version, error: { code, message, ...context } }
- * stderr: 进度日志（human-readable，agent 可忽略）
+ * stdout: a single line of final JSON (machine-readable)
+ *   - success: { ok: true, command, version, data }
+ *   - failure: { ok: false, command, version, error: { code, message, ...context } }
+ * stderr: progress logs (human-readable; agents can ignore them)
  *
- * --legacy-output 模式：保留旧裸字段格式，便于已按旧 JSON 解析的脚本/agent 平滑过渡。
+ * --legacy-output mode: emit the pre-envelope shape so scripts / agents that
+ * already parse the old JSON can migrate gradually.
  */
 
 import { readFileSync } from "fs";
@@ -30,10 +31,11 @@ export function isLegacyMode() { return LEGACY_MODE; }
 export function isVerboseMode() { return VERBOSE_MODE; }
 
 /**
- * 输出成功结果。调用方应在调用后让函数自然返回（不要再 process.exit）。
- * @param {string} command - 命令名，如 "create-card" / "wallet-init"
- * @param {object} data - envelope 模式下放在 data 字段
- * @param {object} [legacyShape] - legacy 模式下直接输出的旧格式对象；省略则使用 data 本身
+ * Emit a success result. Callers should let the function return naturally
+ * (do not call process.exit afterwards).
+ * @param {string} command - command name, e.g. "create-card" / "wallet-init"
+ * @param {object} data - placed under envelope.data
+ * @param {object} [legacyShape] - the legacy-mode payload; if omitted, `data` is used
  */
 export function emitOk(command, data, legacyShape) {
   if (LEGACY_MODE) {
@@ -44,10 +46,11 @@ export function emitOk(command, data, legacyShape) {
 }
 
 /**
- * 输出错误并退出（按错误码对应的 exit 码）。
+ * Emit an error and exit with the corresponding exit code.
  * @param {string} command
- * @param {string} code - ERROR_CODES 键名
- * @param {object} [details] - 额外字段。message 字段会覆盖默认 message；legacy 字段在 legacy 模式下完全替代输出
+ * @param {string} code - key of ERROR_CODES
+ * @param {object} [details] - extra fields. `message` overrides the default message;
+ *   `legacy` fully replaces the output in legacy mode.
  */
 export function emitErr(command, code, details = {}) {
   const info = ERROR_CODES[code] || ERROR_CODES.INTERNAL_ERROR;
@@ -69,17 +72,17 @@ export function emitErr(command, code, details = {}) {
   process.exit(exit);
 }
 
-/** 进度日志（quiet 模式压制） */
+/** Progress log (suppressed in quiet mode) */
 export function logInfo(msg) {
   if (!QUIET_MODE) console.error(msg);
 }
 
-/** 详细日志（仅 verbose 模式下输出） */
+/** Verbose log (only emitted in verbose mode) */
 export function logVerbose(msg) {
   if (VERBOSE_MODE && !QUIET_MODE) console.error(msg);
 }
 
-/** 错误日志（quiet 模式下也会输出） */
+/** Error log (still emitted in quiet mode) */
 export function logError(msg) {
   console.error(msg);
 }

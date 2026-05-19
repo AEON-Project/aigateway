@@ -1,16 +1,16 @@
 /**
- * 错误码常量表 —— CLI 与文档的单一事实源
+ * Error-code registry — single source of truth shared by the CLI and the docs.
  *
- * 退出码语义：
- *   0 成功
- *   1 用户错误（参数、余额、配置、用户拒绝）
- *   2 超时（轮询、WalletConnect、签名、链上）
- *   3 服务端 / 网络
- *   4 内部错误
+ * Exit-code semantics:
+ *   0  success
+ *   1  user error (bad argument, insufficient balance, configuration, user reject)
+ *   2  timeout (polling, WalletConnect, signature, on-chain wait)
+ *   3  service / network
+ *   4  internal error
  */
 
 export const ERROR_CODES = {
-  // ===== 用户错误（exit 1）=====
+  // ===== User error (exit 1) =====
   WALLET_NOT_CONFIGURED:  { exit: 1, message: "Wallet not configured. Run: aigateway wallet-init" },
   SERVICE_URL_MISSING:    { exit: 1, message: "Service URL not configured." },
   AMOUNT_INVALID:         { exit: 1, message: "Invalid amount." },
@@ -25,13 +25,13 @@ export const ERROR_CODES = {
   TOPUP_AMOUNT_TOO_SMALL: { exit: 1, message: "Top-up amount is below the minimum." },
   PAYMENT_REJECTED:       { exit: 1, message: "Payment approval was rejected. Please try again if you'd like to proceed." },
 
-  // ===== 超时（exit 2）=====
+  // ===== Timeout (exit 2) =====
   PAYMENT_TIMEOUT:        { exit: 2, message: "Payment approval timed out. Please try again." },
   WC_SESSION_EXPIRED:     { exit: 2, message: "WalletConnect session expired." },
   POLL_TIMEOUT:           { exit: 2, message: "Polling timed out. Card may still be provisioning." },
   TX_TIMEOUT:             { exit: 2, message: "On-chain transaction timed out." },
 
-  // ===== 服务/网络（exit 3）=====
+  // ===== Service / network (exit 3) =====
   SERVICE_UNAVAILABLE:    { exit: 3, message: "Service unavailable or network error." },
   PAYMENT_FETCH_FAILED:   { exit: 3, message: "Failed to fetch payment requirements." },
   BALANCE_CHECK_FAILED:   { exit: 3, message: "Failed to check balance." },
@@ -44,7 +44,7 @@ export const ERROR_CODES = {
   IMAGE_DOWNLOAD_FAILED:  { exit: 3, message: "Image download failed." },
   FUNDING_FAILED:         { exit: 3, message: "Funding flow failed." },
 
-  // ===== 内部（exit 4）=====
+  // ===== Internal (exit 4) =====
   INTERNAL_ERROR:         { exit: 4, message: "Internal error." },
   WALLET_ERROR:           { exit: 1, message: "Wallet operation failed." },
 };
