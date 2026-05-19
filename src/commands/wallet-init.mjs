@@ -68,16 +68,24 @@ export async function initWallet(opts) {
     }
   }
 
-  // 决策：是否需要 topup
+  // 决策：是否需要 topup —— 只看链上真实状态，不依赖 config.mainWallet 字段。
+  // 之前用 !config.mainWallet 当判断条件是错的：mainWallet 只是 withdraw 默认目标地址，
+  // 即使为 null（如用户外部转账 / 旧版本未记录），只要链上 USDT/allowance 充足就应该
+  // 直接允许付费调用，不要强制再走一次 wallet-topup。
   let needsTopup = false;
   let topupReason = null;
-  if (created || !config.mainWallet) {
+  if (created) {
+    // 刚生成的 session key 必然没钱，无需查链
     needsTopup = true;
-    topupReason = "no_prior_funding";
-  } else if (chainCheckOk && usdtNum < LOW_BALANCE_THRESHOLD) {
+    topupReason = "first_time";
+  } else if (!chainCheckOk) {
+    // 链上查询失败 —— 保守标记需要 topup 由用户决定下一步
+    needsTopup = true;
+    topupReason = "chain_check_failed";
+  } else if (usdtNum < LOW_BALANCE_THRESHOLD) {
     needsTopup = true;
     topupReason = "low_balance";
-  } else if (chainCheckOk && allowance === 0n) {
+  } else if (allowance === 0n) {
     needsTopup = true;
     topupReason = "no_approve";
   }

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-05-19
+
+### Fixed
+- **`wallet-init` no longer requires `mainWallet` field in config to consider the wallet "funded".**
+  Previously the decision tree was `created || !config.mainWallet ⇒ needsTopup=true`, which meant
+  a session wallet that had USDT and was already approved on-chain — but whose local config had
+  never recorded a `mainWallet` (e.g. funded by an external CEX transfer, or copied from another
+  machine without that field) — would still be flagged as needing a top-up, sending the agent
+  through a redundant `wallet-topup` flow. The decision now relies only on on-chain state
+  (USDT balance ≥ `LOW_BALANCE_THRESHOLD` and `allowance > 0`). `mainWallet` is treated purely
+  as a withdraw-default and has no effect on `needsTopup`.
+- `topupReason` enum updated: `no_prior_funding` removed; new values are `first_time` (replaces
+  the created branch), `low_balance`, `no_approve`, and `chain_check_failed`.
+
 ## [0.1.2] — 2026-05-19
 
 ### Changed
