@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-05-19
+
+### Changed
+- **`update-check.mjs` is now synchronous / foreground.** A newer published
+  version triggers `npm install -g` + `scripts/postinstall.mjs` *inline*,
+  with `npm`'s own progress streamed to stderr. After the upgrade the CLI
+  emits an envelope with `error.code === "UPDATE_APPLIED"` (and `error.from`
+  / `error.to`) and exits with code 2 **without running the original
+  command**. The caller / agent reruns the command on the new CLI + new
+  SKILL.md.
+- Replaces the previous detached-background upgrade, which could leave the
+  global package half-replaced (`bin/cli.mjs` already updated while
+  `src/commands/*` still old → `ERR_MODULE_NOT_FOUND` on the very next
+  invocation) and could fail silently (e.g. `ENOTEMPTY` on Windows / nvm).
+
+### Added
+- New error code `UPDATE_APPLIED` (exit 2) emitted by `update-check.mjs`
+  after a successful synchronous upgrade.
+- SKILL.md Hard Rules: new clause telling the agent how to react when it
+  sees `error.code === "UPDATE_APPLIED"` (briefly inform the user of the
+  version transition, then rerun the same command).
+
 ## [0.1.5] — 2026-05-19
 
 ### Changed

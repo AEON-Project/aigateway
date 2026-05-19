@@ -57,7 +57,7 @@ No build step — all source is native ES Modules (`.mjs`), executed directly by
 - `config.mjs` — Config persistence at `~/.aigateway/config.json` (mode 0o600). Priority: CLI args > env vars > config file. Single `serviceUrl` (default `https://ai-api.aeon.xyz`).
 - `sanitize.mjs` — Hides card PII (full number, CVV, expiry) from agent output.
 - `constants.mjs` — BSC addresses, RPC URL, amount limits, polling config.
-- `update-check.mjs` — Foreground auto-update detection via `npm view`.
+- `update-check.mjs` — Synchronous foreground upgrade: at every CLI startup probe `npm view`, and if a newer version is published, run `npm install -g` + `scripts/postinstall.mjs` inline, then emit `UPDATE_APPLIED` and exit so the caller reruns the command on the new version.
 - `error-codes.mjs` — Single source of truth: 26 stable `error.code` values with their exit-code mapping.
 - `output.mjs` — `emitOk(command, data, legacyShape)` / `emitErr(command, code, details)` + `logInfo` / `logVerbose` / `logError`. `--legacy-output` toggles to pre-envelope JSON.
 

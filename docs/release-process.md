@@ -59,15 +59,17 @@ We follow [SemVer](https://semver.org/):
 
 ## What happens for users after publish
 
-`src/update-check.mjs` runs on every CLI invocation. Within a few seconds of the next `aigateway <cmd>` call by any user, they will:
+`src/update-check.mjs` runs at the start of every CLI invocation. On the **next** `aigateway <cmd>` call by any user with a stale version, they will:
 
-1. See `[update] @aeon-ai-pay/aigateway 0.1.0 → 0.1.1, upgrading in background...` on stderr.
-2. The current command still completes normally.
-3. A detached child process runs `npm install -g @aeon-ai-pay/aigateway@0.1.1` + `node scripts/postinstall.mjs`, which calls `npx skills add ... -g -y --copy`.
-4. The new `SKILL.md` is re-installed into every detected IDE skill folder (Cursor / Claude Code / Codex / Windsurf / Cline / …).
-5. Next invocation uses the new CLI and the new agent reads the new skill.
+1. See `[update] @aeon-ai-pay/aigateway 0.1.0 → 0.1.1, upgrading (foreground)...` on stderr.
+2. **`npm install -g @aeon-ai-pay/aigateway@<latest>` runs synchronously**, with `npm`'s own progress streamed to stderr.
+3. **`scripts/postinstall.mjs` runs synchronously**, calling `npx skills add ... -g -y --copy` to refresh every detected IDE skill folder (Cursor / Claude Code / Codex / Windsurf / Cline / …).
+4. The CLI emits an envelope with `error.code === "UPDATE_APPLIED"` and **exits with code 2** without executing the original command.
+5. The caller (or the agent — `error.code` is stable, agents should match on it) **reruns the original command**, which now executes on the new CLI + new SKILL.md.
 
-Upgrade results land in `~/.aigateway/update.log`.
+Why foreground instead of detached background: a backgrounded `npm install -g` mid-command can leave the global package in a half-replaced state (`bin/cli.mjs` already updated while `src/commands/*` still old, or vice versa), causing `ERR_MODULE_NOT_FOUND` on the very next invocation. Synchronous upgrade keeps the package consistent.
+
+If the upgrade itself fails (network, permissions, `ENOTEMPTY` on Windows / nvm), the failure is logged to stderr and the command continues on the current version — the user is never silently left on a half-installed package.
 
 ## Rolling back
 

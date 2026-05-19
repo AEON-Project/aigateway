@@ -38,8 +38,9 @@ The full set of `error.code` values, grouped by exit code, is defined in [`src/e
 | ---- | ---- |
 | `PAYMENT_TIMEOUT` | WalletConnect / signature request timed out (5 minutes). |
 | `WC_SESSION_EXPIRED` | WalletConnect session dropped mid-flow. |
-| `POLL_TIMEOUT` | `status --poll` exhausted attempts. Card may still be provisioning. |
+| `POLL_TIMEOUT` | `create-card-status --poll` exhausted attempts. Card may still be provisioning. |
 | `TX_TIMEOUT` | On-chain receipt wait exceeded 60 s. |
+| `UPDATE_APPLIED` | The CLI just upgraded itself synchronously to a newer version. The previous command was not executed — the caller (or the agent) must rerun it on the new version. Envelope carries `error.from` / `error.to` showing the version transition. |
 
 ### Exit 3 — Service / Network
 

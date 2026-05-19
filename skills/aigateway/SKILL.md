@@ -16,7 +16,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.1.5"
+  version: "0.1.6"
   author: AEON-Project
   openclaw:
     requires:
@@ -413,6 +413,7 @@ The literal "main wallet" label is a spec requirement — do not omit.
 - **Never** poll `status` more than 42 times. Stop on timeout, prompt user to note `orderNo`.
 - **Never** fabricate `amountLimits`. Always use `min/max` from `wallet-init`.
 - **Match `error.code`, not `error.message`.** Messages may change between versions.
+- **If `error.code === "UPDATE_APPLIED"`**: the CLI just upgraded itself synchronously to a newer version. The previous command **did not execute**. Briefly tell the user the version transition (`error.from` → `error.to`), then **rerun the same command exactly as before**. The new CLI binary and the new `SKILL.md` are already installed. Do NOT prompt the user to upgrade — it has already happened.
 
 ---
 

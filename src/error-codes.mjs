@@ -30,6 +30,7 @@ export const ERROR_CODES = {
   WC_SESSION_EXPIRED:     { exit: 2, message: "WalletConnect session expired." },
   POLL_TIMEOUT:           { exit: 2, message: "Polling timed out. Card may still be provisioning." },
   TX_TIMEOUT:             { exit: 2, message: "On-chain transaction timed out." },
+  UPDATE_APPLIED:         { exit: 2, message: "Package was just upgraded. Rerun the previous command on the new version." },
 
   // ===== Service / network (exit 3) =====
   SERVICE_UNAVAILABLE:    { exit: 3, message: "Service unavailable or network error." },
