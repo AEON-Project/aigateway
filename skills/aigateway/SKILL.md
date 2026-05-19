@@ -16,7 +16,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.1.3"
+  version: "0.1.4"
   author: AEON-Project
   openclaw:
     requires:
@@ -238,15 +238,29 @@ Output template first line:
 
 ### Success
 
-`envelope.data`: `{ orderNo, data, paymentResponse, pollResult? }`. After fetching details (may take ~30 s), display **verbatim**:
+`envelope.data`: `{ orderNo, amount, data, paymentResponse, balance: { initial, before, after, charged, topup }, pollResult? }`.
+
+After fetching details (may take ~30 s), display **verbatim** (emoji, spacing, glyphs `→` / `−` / `+` must match exactly):
 
 ```
-Order No: {orderNo}
-Card: {cardScheme} •••• {last4}
-State: Active
-Remaining balance: ${amount} USD
-Usage: 0 / 1 (single-use)
+✅ Card Issued
+🆔 Order        {orderNo}
+💳 Card         {cardScheme} •••• {last4}
+🎯 State        Active
+💵 Face value   ${amount} USD
+🔢 Usage        0 / 1 (single-use)
+🔗 Tx           {transaction}
+💸 Top-up       {initial} → {before} USDT (+{topup})
+💰 Charged      {before} → {after} USDT (−{charged})
 ```
+
+**Field rules:**
+
+- `{cardScheme}` and `••••{last4}` come from `data.data.model` (already sanitized — never show full card number).
+- `{transaction}` is `data.paymentResponse.txHash` or `data.data.transaction`. If absent, render the line as `🔗 Tx           —`.
+- The **`💸 Top-up`** row is **conditional**: render only when `data.balance.topup` is non-null and non-zero (i.e. a lazy top-up actually happened during this call). Otherwise **omit the entire `💸 Top-up` line**.
+- The **`💰 Charged`** row is always rendered.
+- Use the minus sign character `−` (U+2212) before `{charged}`, not the hyphen `-`. Use `→` (U+2192) for the balance transition arrow.
 
 Always record `orderNo` — only identifier for status queries.
 
@@ -284,18 +298,30 @@ Output template first line:
 
 ### Success
 
-`envelope.data`: `{ prompt, transaction, images: [{ url, localPath, format, width, height, sizeHuman }], balance: { initial, before, after, charged } }`.
+`envelope.data`: `{ prompt, transaction, images: [{ url, localPath, format, width, height, sizeHuman }], balance: { initial, before, after, charged, topup } }`.
 
-Display **verbatim**:
+Display **verbatim** (emoji, spacing, dash glyphs `→` / `−` / `+` must match exactly):
 
 ```
 ✅ Generated
-Prompt:       {prompt}
-Image:        {localPath} ({width}×{height}, {sizeHuman})
-Transaction:  {transaction}
-Charged:      {balance.charged} USDT
-Balance:      {balance.after} USDT remaining
+🧩 Powered by Skillboss
+📁 Path        {localPath}
+🎨 Format      {FORMAT}
+📐 Dimensions  {width} × {height}
+💾 Size        {sizeHuman}
+🔗 Tx          {transaction}
+💸 Top-up      {initial} → {before} USDT (+{topup})
+💰 Charged     {before} → {after} USDT (−{charged})
 ```
+
+**Field rules:**
+
+- `{FORMAT}` is `data.outputFormat` uppercased (e.g. `PNG`, `JPEG`, `WEBP`).
+- `{width}` / `{height}` / `{sizeHuman}` come from `data.images[0]` (first image only — agent does not list extras unless asked).
+- `{transaction}` is `data.transaction` (may be `null` if the server didn't return one; in that case render the line as `🔗 Tx          —`).
+- The **`💸 Top-up`** line is **conditional**: only render it if `data.balance.topup` is not null and not "0" (i.e. a lazy top-up actually happened during this call). Otherwise **omit the entire `💸 Top-up` line**.
+- The **`💰 Charged`** line is always rendered.
+- Use the minus sign character `−` (U+2212) before `{charged}`, not the hyphen `-`. Use `→` (U+2192) for the balance transition arrow.
 
 ### Errors
 
@@ -404,6 +430,15 @@ The following first-line / key-phrase strings must be **exactly reproduced** —
 | Pre-check | `> Pre-check in progress...` |
 | Top up | `> Topping up wallet...` |
 | Create card | `> Creating Agent Card...` |
+| Card success header | `✅ Card Issued` |
+| Card Order row | `🆔 Order        {orderNo}` |
+| Card scheme row | `💳 Card         {cardScheme} •••• {last4}` |
+| Card State row | `🎯 State        Active` |
+| Card Face value row | `💵 Face value   ${amount} USD` |
+| Card Usage row | `🔢 Usage        0 / 1 (single-use)` |
+| Card Tx row | `🔗 Tx           {transaction}` |
+| Card Top-up row (conditional) | `💸 Top-up       {initial} → {before} USDT (+{topup})` |
+| Card Charged row | `💰 Charged      {before} → {after} USDT (−{charged})` |
 | Create image | `> Generating image...` |
 | Fetch details | `> Fetching card details, please wait...` |
 | Query status | `> Fetching card status...` |
@@ -411,6 +446,14 @@ The following first-line / key-phrase strings must be **exactly reproduced** —
 | Withdraw target line | `To: main wallet (0x0...{last4})` |
 | Withdraw status line | `Status: completed` |
 | Image success header | `✅ Generated` |
+| Image success row 2 | `🧩 Powered by Skillboss` |
+| Image Path row | `📁 Path        {localPath}` |
+| Image Format row | `🎨 Format      {FORMAT}` |
+| Image Dimensions row | `📐 Dimensions  {width} × {height}` |
+| Image Size row | `💾 Size        {sizeHuman}` |
+| Image Tx row | `🔗 Tx          {transaction}` |
+| Image Top-up row (conditional) | `💸 Top-up      {initial} → {before} USDT (+{topup})` |
+| Image Charged row | `💰 Charged     {before} → {after} USDT (−{charged})` |
 | Wallet prepared header | `✅ Wallet prepared` |
 
 Address rendering: always `0x0...{last4}` (first 3 + ellipsis + last 4 chars).

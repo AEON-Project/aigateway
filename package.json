@@ -1,6 +1,6 @@
 {
   "name": "@aeon-ai-pay/aigateway",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "AI Agents discover, invoke, and settle paid LLMs, APIs, and Skills — starting with Skill Boss. No manual key setup. No prepayment. Pay-per-call via x402 or Agent Card.",
   "type": "module",
   "bin": {

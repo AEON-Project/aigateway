@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-05-19
+
+### Added
+- **`create-card` envelope now carries a `balance` block** (`initial`, `before`,
+  `after`, `charged`, `topup`) parallel to `create-image`, so the agent can
+  render the same money-flow narrative for card issuance.
+
+### Changed
+- **Both paid commands adopt an emoji-aligned card-style success template**
+  with explicit balance transitions (`{initial} → {before}` for top-up;
+  `{before} → {after}` for charge) on dedicated rows. The `💸 Top-up` row is
+  conditional — only rendered when `balance.topup` is non-null.
+  - `create-card`: header `✅ Card Issued`, rows for Order / Card / State /
+    Face value / Usage / Tx / (optional) Top-up / Charged.
+  - `create-image`: header `✅ Generated`, second row `🧩 Powered by Skillboss`,
+    rows for Path / Format / Dimensions / Size / Tx / (optional) Top-up /
+    Charged.
+- SKILL.md Copy Constraints table extended with all new template rows so
+  agents must reproduce the glyphs (`→`, `−`, `+`) exactly.
+
 ## [0.1.3] — 2026-05-19
 
 ### Fixed

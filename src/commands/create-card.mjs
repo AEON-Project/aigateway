@@ -82,11 +82,13 @@ export async function createCard(opts) {
   let sessionAddress;
   let topupAmount = null;
   let balanceInitialUsdt = null;
+  let balanceBeforeChargeUsdt = null;
 
   try {
     const { address, usdt, bnb, bnbRaw } = await getWalletBalance(privateKey);
     sessionAddress = address;
     balanceInitialUsdt = usdt;
+    balanceBeforeChargeUsdt = usdt;
     const usdtNum = parseFloat(usdt);
     logInfo(`Wallet: ${address}`);
     logInfo(`Balance: ${usdt} USDT, ${bnb} BNB`);
@@ -210,6 +212,7 @@ export async function createCard(opts) {
     logInfo("Re-checking wallet balance...");
     try {
       const { usdt, bnbRaw } = await getWalletBalance(privateKey);
+      balanceBeforeChargeUsdt = usdt;
       const usdtNum = parseFloat(usdt);
       if (needGas && bnbRaw === 0n) {
         emitErr("create-card", "INSUFFICIENT_BNB", {
@@ -260,12 +263,28 @@ export async function createCard(opts) {
     const paymentResponse = decodePaymentResponse(response.headers);
     const orderNo = paymentReq.orderNo || response.data?.model?.orderNo || response.data?.orderNo;
 
+    let balanceAfterUsdt = null;
+    try {
+      const after = await getWalletBalance(privateKey);
+      balanceAfterUsdt = after.usdt;
+    } catch (e) {
+      logInfo(`Post-payment balance check failed: ${e.message}`);
+    }
+
     const sanitizedData = sanitizeOutput(response.data);
     const successData = {
       appId,
       orderNo,
+      amount,
       data: sanitizedData,
       paymentResponse,
+      balance: {
+        initial: balanceInitialUsdt,
+        before: balanceBeforeChargeUsdt,
+        after: balanceAfterUsdt,
+        charged: requiredUsdt,
+        topup: topupAmount,
+      },
     };
 
     function findCardStatus(obj) {
