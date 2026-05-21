@@ -8,9 +8,10 @@
 import axios from "axios";
 
 /** Fetch catalog from server. Throws on network / HTTP failure. */
-export async function fetchCatalog(serviceUrl) {
+export async function fetchCatalog(serviceUrl, appId) {
   if (!serviceUrl) throw new Error("serviceUrl is required");
-  const url = `${serviceUrl}/open/api/skillBoss/tools-catalog`;
+  const base = `${serviceUrl}/open/api/skillBoss/tools-catalog`;
+  const url = appId ? `${base}?appId=${encodeURIComponent(appId)}` : base;
   const resp = await axios.get(url, { timeout: 15_000 });
   return resp.data;
 }

@@ -19,20 +19,22 @@ import { fetchCatalog, findModel } from "../catalog.mjs";
 
 export async function sbTools(opts) {
   const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+  const { appId } = opts;
   if (!serviceUrl) {
-    emitErr("sb-tools", "SERVICE_URL_MISSING", {});
+    emitErr("sb-tools", "SERVICE_URL_MISSING", { appId });
     return;
   }
 
   logInfo("Fetching tools catalog from server...");
   let catalog;
   try {
-    catalog = await fetchCatalog(serviceUrl);
+    catalog = await fetchCatalog(serviceUrl, appId);
   } catch (e) {
     emitErr("sb-tools", "CATALOG_FETCH_FAILED", {
       message: `Failed to fetch tools catalog: ${e.message}`,
       url: `${serviceUrl}/open/api/skillBoss/tools-catalog`,
       status: e.response?.status,
+      appId,
     });
     return;
   }

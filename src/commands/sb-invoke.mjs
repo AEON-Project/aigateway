@@ -101,7 +101,7 @@ export async function invoke(opts) {
   //   failure (warn + skip; server still validates).
   let catalog = null;
   try {
-    catalog = await fetchCatalog(serviceUrl);
+    catalog = await fetchCatalog(serviceUrl, appId);
   } catch (e) {
     logInfo(`Warn: catalog fetch failed (${e.message}); skipping client-side validation — server will still check.`);
   }

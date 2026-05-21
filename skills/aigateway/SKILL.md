@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.2.2"
+  version: "0.2.3"
   author: AEON-Project
   openclaw:
     requires:
@@ -73,7 +73,7 @@ aigateway sb tools | jq '.data.categories[].models[] | select(.id=="<model_id>")
 
 每次都从服务端实时获取，无本地缓存。
 
-价格不在 catalog 里：x402 第一阶段（402 响应）会实时返回本次调用的 USDT 金额，CLI 自动展示给用户。
+**价格在 catalog 里**：每个 model 含 `price`（USD 数值）+ `priceUnit`（`per_request` / `per_second` / `per_1k_chars` / `per_minute` / `per_image` / `per_million_tokens`），Agent 用这两个字段给用户**列候选 + 展示预估总价**（详见 Phase 3.2）。最终精确扣款金额由 x402 第一阶段（402 响应）返回，CLI 在 `💰 Charged` 行展示。
 
 ## 钱包模型（与 x402 的关系）
 
@@ -254,21 +254,37 @@ Approve:   {approveTx truncated or "already approved"}
 
 ### 3.2 列出候选 model，等用户挑
 
-⭐ **默认模式**：**AI 不擅自选 model**，而是把候选 + 价格列给用户，让用户拍板。**推荐默认选最便宜的**（按 `tier: "price"` 优先排序）。
+⭐ **默认模式**：**AI 不擅自选 model**，而是把候选 + 预估总价列给用户，让用户拍板。**推荐默认选最便宜的**（按 `tier: "price"` 优先排序）。
 
 **例外**：用户原话已经指定了 model（`"用 flux-2-max 画"`） → 直接用，跳过列表。
 
-#### 候选展示模板（按字面渲染）
+#### Step A: 看 `priceUnit` 决定是否前置询问用量
 
-跑 `aigateway sb tools --category <key>` 拿到该类所有 model，**按 tier 排序**（price → balanced → quality）后用以下模板渲染：
+catalog 中每个 model 都有 `priceUnit` 字段。**服务端按 `priceUnit` 强校验用量字段**，前置不问 → 调用直接报错。
+
+| `priceUnit` | 用量字段 | 服务端强校验？ | 前置询问？ |
+| --- | --- | --- | --- |
+| `per_request` / `per_image` | `inputs.num_outputs` | 越界报错（1–10），缺省默认 1 | 否 |
+| `per_second`（video） | `inputs.duration_seconds` | **必填**（1–300）；缺 → `MISSING_DURATION` 400 | **必问 ——「视频按秒计费。你想生成多少秒？默认 5 秒」** |
+| `per_1k_chars`（tts） | `inputs.text` 字符数 | text 必填非空；缺 → `MISSING_TEXT` 400 | 否（文本来自用户原话） |
+| `per_minute`（stt） | `inputs.duration_minutes` | **必填**（1–360）；缺 → `MISSING_DURATION` 400 | **必问 ——「按分钟计费。这段音频大约多少分钟？」** |
+| `per_million_tokens`（embeddings） | `inputs.input` 字符数 / 4 | input 必填非空；缺 → `MISSING_INPUT` 400 | 否（服务端按字符长度估算 token） |
+
+⚠️ **服务端强校验是为了计费安全**：
+- 漏传 `duration_seconds` → 服务端无法按真实时长收费 → 拒绝
+- 用户传 0 / 负数想绕过 → 拒绝
+- 超出上限（5 分钟视频 / 6 小时音频）→ 拒绝
+
+#### Step B: 候选展示模板（按字面渲染）
+
+拿到用量后，跑 `aigateway sb tools --category <key>` 取所有 model，**按 tier 排序**（price → balanced → quality），渲染：
 
 ```
-✨ 可用 model（{category 中文名}）
+✨ 可用 model（{category 中文名}{ — 基于 {N}{unit-cn} 预估}）
 
-  #  Model ID                                         价格           档位
-  1  {model_id}                                       ${price}{unit} ← 推荐
-  2  {model_id}                                       ${price}{unit}
-  3  {model_id}                                       ${price}{unit}
+  #  Model ID                              单价         预估总价     档位
+  1  {model_id}                            ${unitPrice}{unit-cn}  ${total} {tier} ← 推荐
+  2  {model_id}                            ${unitPrice}{unit-cn}  ${total} {tier}
   ...
 
 直接回车或输入 1 用推荐项；或输入序号 / 完整 model_id 选其它。
@@ -276,23 +292,22 @@ Approve:   {approveTx truncated or "already approved"}
 
 **字段规则**：
 - 第 1 行**永远**是 tier=`price` 档（最便宜），并加 `← 推荐` 后缀
-- `${price}` 取 catalog 中 `model.price`（USD 数值，保留小数）
-- `{unit}` 按 category 推断（见下表）
-- 用户只输序号 `2` / 完整 `model_id` / 直接回车 都接受
-- 用户没回应 → 用 #1（推荐项）
+- `{N}{unit-cn}` 只在用量已知时显示（如 "基于 5 秒预估"）；per_request 类省略
+- `${total}` = `unitPrice × quantity`（quantity 见上表）
+- 用户输序号 / 完整 `model_id` / 直接回车 都接受
 
-#### Category → 价格单位映射
+#### priceUnit → 中文单位 + quantity 公式
 
-| Category | 价格单位 `{unit}` |
-| --- | --- |
-| `image` | `/张` |
-| `video` | `/秒` |
-| `tts` | `/1K 字符` |
-| `stt` | `/分钟` |
-| `embeddings` | `/M tokens` |
-| `search` / `scraper` / `social_data` / `email` / `sms` / `document` / `ui_generation` / `financial` / `news` / `geolocation` / `utility` / `apify` | `/次` |
+| `priceUnit` | `{unit-cn}` | quantity 公式 | 总价示例 |
+| --- | --- | --- | --- |
+| `per_request` | `/次` | `num_outputs` 或 1 | $0.02 × 1 = **$0.02** |
+| `per_image` | `/张` | `num_outputs` 或 1 | $0.01 × 4 = **$0.04** |
+| `per_second` | `/秒` | `duration_seconds` 或 5 | $0.20 × **6 秒** = **$1.20** |
+| `per_1k_chars` | `/1K 字符` | `len(text) / 1000` | $0.05 × **2.5K 字** = **$0.125** |
+| `per_minute` | `/分钟` | `duration_minutes` 或 1 | $0.02 × **3 分钟** = **$0.06** |
+| `per_million_tokens` | `/M tokens` | `len(input) / 4 / 1M` | $0.26 × **0.5M tokens** ≈ **$0.13** |
 
-> 价格是**预估单价**，**最终金额**以 x402 第一阶段（402 响应）的实时数据为准（CLI 会在调用后展示 `💰 Charged`）。
+> 价格是**预估**。**精确金额**由服务端按 `model.priceUnit × inputs 用量` 算出，并在 x402 第一阶段（402 响应）返回；CLI 在 `💰 Charged` 行展示真实扣款。
 
 #### 用户偏好覆盖
 
@@ -455,6 +470,10 @@ aigateway sb invoke \
 | `DOWNLOAD_FAILED` | 3 | 服务端返回 URL 但本地下载失败；URL 仍在 `data.downloaded[].url` |
 | `PAYMENT_FAILED` | 3 | 上游 vendor 错误；透传 `error.data`；5xx 重试一次 |
 | `PAYMENT_FETCH_FAILED` | 3 | 拉取支付要求失败；网络问题 |
+| `MISSING_DURATION` | 1 | 服务端强校验：video 缺 `inputs.duration_seconds`，或 stt 缺 `inputs.duration_minutes`。**必须前置问用户**再调 |
+| `INVALID_DURATION` | 1 | 服务端强校验：duration 越界（video 1–300 秒 / stt 1–360 分钟） |
+| `MISSING_TEXT` / `MISSING_INPUT` | 1 | TTS / embeddings 必填字段为空 |
+| `INVALID_NUM_OUTPUTS` | 1 | `inputs.num_outputs` 越界（1–10） |
 | `MODEL_PRICING_NOT_CONFIGURED` | 1 | 服务端未给该 model 配价；告知用户该 model 暂不可用，建议换 model（或联系运维补 catalog） |
 | `INVALID_BODY` | 1 | 服务端拒绝 body 格式；通常是 CLI bug，提交反馈 |
 | `CATALOG_FETCH_FAILED` | 3 | `sb tools` 拉取 catalog 失败；网络问题，stale cache 仍可用 |
