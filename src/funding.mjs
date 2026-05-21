@@ -2,8 +2,8 @@
  * Funding flow: WalletConnect-based USDT/BNB transfer to session key,
  * plus on-chain pre-authorization (ERC20.approve facilitator).
  *
- * Shared by: create-image (lazy top-up when balance is short),
- *            prepare      (proactive pre-flight before any image work).
+ * Shared by: sb-invoke (lazy top-up when balance is short),
+ *            wallet-topup (proactive pre-flight).
  */
 import {
   withWallet,

@@ -70,7 +70,7 @@ export function createX402Api(privateKey) {
  * sign manually later.
  * Field names follow the x402 v2 PaymentRequirements standard: asset, payTo, amount.
  *
- * Supports both GET (card path) and POST (image / Skill Boss path).
+ * Supports both GET and POST entry points.
  *
  * @param {string} url
  * @param {{ method?: "GET"|"POST", data?: any, headers?: object }} [options]

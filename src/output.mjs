@@ -33,7 +33,7 @@ export function isVerboseMode() { return VERBOSE_MODE; }
 /**
  * Emit a success result. Callers should let the function return naturally
  * (do not call process.exit afterwards).
- * @param {string} command - command name, e.g. "create-card" / "wallet-init"
+ * @param {string} command - command name, e.g. "sb-invoke" / "wallet-init"
  * @param {object} data - placed under envelope.data
  * @param {object} [legacyShape] - the legacy-mode payload; if omitted, `data` is used
  */

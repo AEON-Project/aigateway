@@ -2,50 +2,49 @@
  * Config management: ~/.aigateway/config.json
  * Resolution priority: CLI args > env vars > config.json
  *
- * AEON AI Gateway uses a single x402 service (ai-api.aeon.xyz);
- * different capabilities (virtual card / Skill Boss calls) share the host
- * but use distinct path prefixes.
+ * AEON AI Gateway uses a single x402 service (ai-api.aeon.xyz).
  */
-import { readFileSync, writeFileSync, mkdirSync, chmodSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import {readFileSync, writeFileSync, mkdirSync, chmodSync} from "fs";
+import {join} from "path";
+import {homedir} from "os";
 
 const CONFIG_DIR = join(homedir(), ".aigateway");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 const DEFAULTS = {
-  serviceUrl: "https://ai-api.aeon.xyz",
+    serviceUrl: "https://ai-api-dev.aeon.xyz",
+    // serviceUrl: "https://ai-api.aeon.xyz",
 };
 
 export function loadConfig() {
-  try {
-    return { ...DEFAULTS, ...JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) };
-  } catch {
-    return { ...DEFAULTS };
-  }
+    try {
+        return {...DEFAULTS, ...JSON.parse(readFileSync(CONFIG_FILE, "utf-8"))};
+    } catch {
+        return {...DEFAULTS};
+    }
 }
 
 export function saveConfig(config) {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
-  chmodSync(CONFIG_FILE, 0o600);
+    mkdirSync(CONFIG_DIR, {recursive: true});
+    writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), {mode: 0o600});
+    chmodSync(CONFIG_FILE, 0o600);
 }
 
 /**
  * Resolve a value with priority: cliValue > envKey > config[configKey]
  */
 export function resolve(cliValue, envKey, configKey) {
-  if (cliValue) return cliValue;
-  if (process.env[envKey]) return process.env[envKey];
-  const cfg = loadConfig();
-  return cfg[configKey] || undefined;
+    if (cliValue) return cliValue;
+    if (process.env[envKey]) return process.env[envKey];
+    const cfg = loadConfig();
+    return cfg[configKey] || undefined;
 }
 
 export function getConfigPath() {
-  return CONFIG_FILE;
+    return CONFIG_FILE;
 }
 
 export function isSessionKeyMode() {
-  const config = loadConfig();
-  return config.mode === "session-key";
+    const config = loadConfig();
+    return config.mode === "session-key";
 }

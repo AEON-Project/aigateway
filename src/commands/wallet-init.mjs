@@ -10,10 +10,9 @@
  * Design intent: with a single wallet-init call, the agent gets every decision input it needs:
  *   - data.ready=true → the session private key is usable
  *   - data.needsTopup=true → wallet-topup must run first (the envelope includes presets / minTopup / reason)
- *   - data.needsTopup=false → can proceed directly to create-card / create-image
+ *   - data.needsTopup=false → can proceed directly to sb invoke
  */
 import { loadConfig, saveConfig } from "../config.mjs";
-import { MIN_AMOUNT, MAX_AMOUNT } from "../constants.mjs";
 import { getWalletBalance, getAllowance } from "../balance.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
@@ -106,7 +105,6 @@ export async function initWallet(opts) {
     topupReason,            // "first_time" | "low_balance" | "no_approve" | "chain_check_failed" | null
     minTopup: MIN_TOPUP_USDT,
     presets: TOPUP_PRESETS,
-    amountLimits: { min: MIN_AMOUNT, max: MAX_AMOUNT },
     chainCheck: chainCheckOk ? "ok" : { error: chainCheckError },
   };
   emitOk("wallet-init", data, data);

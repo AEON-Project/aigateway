@@ -104,45 +104,33 @@ program
     return withdraw(opts);
   });
 
-program
-  .command("create-card")
-  .description("Create a one-time virtual card by paying with USDT on BSC via x402")
-  .requiredOption("--amount <usd>", "Card amount in USD ($0.6 ~ $800)")
-  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
-  .option("--topup-amount <usdt>", "USDT top-up amount when balance is insufficient (≥5)")
-  .option("--private-key <key>", "Override EVM private key")
-  .option("--poll", "Auto-poll status after creation", false)
-  .option("--dry-run", "Run all preflight checks but do not sign/transact", false)
-  .action(async (opts) => {
-    const { createCard } = await import("../src/commands/create-card.mjs");
-    return createCard(opts);
-  });
+// ─── x402 unified paid-call entry ──────────────────────────────────────────
+//   The only paid-call surface: `sb invoke --model <id> --inputs <json|@file>`.
+const sb = program
+  .command("sb")
+  .description("AI tools — invoke any of ~200+ endpoints via x402 (USDT on BSC)");
 
-program
-  .command("create-image")
-  .description("Generate an AI image via Skill Boss, paying with USDT on BSC via x402")
-  .requiredOption("--prompt <text>", "Image prompt text")
+sb
+  .command("invoke")
+  .description("Invoke any AI tool model (run `aigateway sb tools` first to populate the local catalog)")
+  .requiredOption("--model <id>", "Model id, e.g. replicate/black-forest-labs/flux-schnell")
+  .requiredOption("--inputs <json>", "Inputs as JSON literal or @path/to/file.json")
   .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
-  .option("--aspect-ratio <ratio>", "Image aspect ratio", "16:9")
-  .option("--output-format <fmt>", "Image format (png/jpeg/webp)", "png")
-  .option("--model <id>", "Model identifier")
-  .option("--output <dir>", "Output directory (default ~/aigateway-images)")
+  .option("--output <dir>", "Output directory for binary downloads (image/video/audio)")
+  .option("--raw", "Skip auto-download and emit the upstream response as-is", false)
   .option("--topup-amount <usdt>", "USDT top-up amount when balance is insufficient (≥5)")
   .option("--private-key <key>", "Override EVM private key")
   .action(async (opts) => {
-    const { createImage } = await import("../src/commands/create-image.mjs");
-    return createImage(opts);
+    const { sbInvokeCommand } = await import("../src/commands/sb-invoke.mjs");
+    return sbInvokeCommand(opts);
   });
 
-program
-  .command("create-card-status")
-  .description("Query the status of a virtual card created via create-card")
-  .requiredOption("--order-no <orderNo>", "Order number returned by create-card")
-  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
-  .option("--poll", "Poll until terminal status", false)
+sb
+  .command("tools")
+  .description("Fetch and display the AI tool catalog from the server (no caching, always live)")
   .action(async (opts) => {
-    const { status } = await import("../src/commands/create-card-status.mjs");
-    return status(opts);
+    const { sbTools } = await import("../src/commands/sb-tools.mjs");
+    return sbTools(opts);
   });
 
 program
