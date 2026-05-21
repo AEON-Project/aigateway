@@ -55,6 +55,6 @@ For Claude Code, OpenClaw, Gemini CLI, GitHub Copilot, and 30+ others, the [skil
 
 After installation, in your IDE chat say:
 
-> Create me a $5 virtual card.
+> Generate me an image of a cyberpunk fox.
 
-The agent should propose running `aigateway wallet-init` (one-time, auto-creates a wallet) followed by `aigateway create-card --amount 5 --poll`. If it doesn't, the rule file isn't being picked up — check that the file path matches what your IDE expects and that the IDE has been restarted.
+The agent should propose running `aigateway wallet-init` (one-time, auto-creates a wallet), then `aigateway sb tools --category image` to pick a model, then `aigateway sb invoke --model <id> --inputs '{"prompt":"cyberpunk fox"}'`. If it doesn't, the rule file isn't being picked up — check that the file path matches what your IDE expects and that the IDE has been restarted.

@@ -1,27 +1,31 @@
 ---
-description: Use the aigateway CLI to create and manage one-time virtual debit cards via the x402 payment protocol on BSC. Trigger on intents like "create a card", "buy a virtual card", "card status", "top up", "withdraw funds".
+description: Use the aigateway CLI to invoke 200+ paid AI tools (image, video, TTS, STT, search, scraping, email, document, social data, UI generation, embeddings, finance, utility) via the x402 protocol on BSC. Trigger on intents like "generate an image", "make a video", "transcribe this audio", "search the web", "scrape this page", "send an email", "parse this PDF", "top up wallet", "check balance".
 alwaysApply: false
 ---
 
-# aigateway — Virtual Card via x402
+# aigateway — AI Tool Invocation via x402
 
-Use this rule when the user wants to **create, query, or manage** one-time-use virtual debit cards funded via USDT on BSC.
+Use this rule when the user wants to invoke any paid AI tool (image generation, video, TTS, STT, web search, scraping, social data, email, SMS, document parsing, UI generation, embeddings, finance, news, utility) funded via USDT on BSC.
 
 ## First-time setup (always run once)
 
 ```bash
-aigateway wallet-init
+aigateway wallet-init                 # auto-creates a local session wallet
+aigateway wallet-topup --amount 5     # one-time WalletConnect funding + facilitator approve (gasless from here)
 ```
 
-Auto-creates a local session wallet if missing. Returns an envelope; `envelope.data.ready === true` means ready.
+`wallet-init` returns an envelope; `envelope.data.ready === true` means ready. If `envelope.data.needsTopup === true`, run `wallet-topup` next.
 
 ## Commands
 
 | Intent | Command |
 | --- | --- |
-| Create a $N card and poll until ready | `aigateway create-card --amount <N> --poll` |
-| Specify merchant app ID (optional) | `aigateway create-card --amount <N> --app-id <merchantId> --poll` |
-| Check status of an existing order | `aigateway create-card-status --order-no <orderNo>` |
+| List all available tool models | `aigateway sb tools` |
+| Narrow by category | `aigateway sb tools --category image` (or `video` / `tts` / `stt` / `search` / `scraper` / `social_data` / `email` / `sms` / `document` / `ui_generation` / `embeddings` / `financial` / `news` / `utility`) |
+| Inspect a single model + its `effectiveSchema` | `aigateway sb tools --model <id>` |
+| Filter by price tier | `aigateway sb tools --tier price` (or `balanced` / `quality`) |
+| Invoke a tool (the only paid call) | `aigateway sb invoke --model <id> --inputs '<json>' [--output <dir>] [--raw]` |
+| Optional merchant app id | append `--app-id <merchantId>` to any command |
 | Show local wallet balance | `aigateway wallet-balance` |
 | Top up USDT from main wallet (interactive WalletConnect) | `aigateway wallet-topup --amount <USDT>` |
 | Top up BNB for gas (interactive WalletConnect) | `aigateway wallet-gas --amount <BNB>` |
@@ -36,22 +40,31 @@ Every command writes **one line of JSON** to stdout: the envelope.
 
 Stderr is human-readable progress; pass `--quiet` if you want it suppressed.
 
+`sb invoke` success payload includes `model`, `inputs`, `transaction`, `downloaded[]` (binary artifacts saved locally), `raw` (upstream JSON), and `balance` (`initial`/`before`/`after`/`charged`/`topup`). Binary outputs default to `~/aigateway-{images,videos,audio}/`.
+
 ## Error Handling
 
 Branch on `error.code` (stable). Common cases:
 
-- `AMOUNT_OUT_OF_RANGE` — Show valid range from `error.min` / `error.max`, ask user.
-- `INSUFFICIENT_USDT` / `INSUFFICIENT_BNB` — Run `aigateway wallet-init` / `aigateway wallet-gas` then retry.
+- `MISSING_MODEL` / `INVALID_MODEL_ID` — Run `aigateway sb tools` to pick a valid id; don't guess from memory.
+- `MISSING_INPUTS` / `INVALID_INPUTS` — `error.errors[]` lists `{ field, kind, message }` items; rebuild `--inputs` from the model's `effectiveSchema` (re-pull via `sb tools --model <id>`).
+- `INVALID_INPUTS_JSON` — Quoting bug in the caller. Use `JSON.stringify` or `--inputs @path/to/file.json`.
+- `INSUFFICIENT_USDT` / `TOPUP_REQUIRED` — Top up via `aigateway wallet-topup --amount <n>` (use `error.presets`) or pass `--topup-amount <n>` to `sb invoke`.
+- `INSUFFICIENT_BNB` — Run `aigateway wallet-gas` then retry.
+- `MODEL_PRICING_NOT_CONFIGURED` — Model exists in catalog but isn't priced yet. Pick another.
 - `PAYMENT_REJECTED` / `PAYMENT_TIMEOUT` — User cancelled or didn't respond. **Do not auto-retry**; ask first.
-- `POLL_TIMEOUT` — Card may still be provisioning. Note the `orderNo`, query later.
+- `DOWNLOAD_FAILED` / `IMAGE_DOWNLOAD_FAILED` — Call succeeded and was paid. Re-fetch `data.downloaded[].url`; do **not** re-invoke (you'd pay twice).
+- `UPDATE_APPLIED` — CLI just upgraded itself. Rerun the same command verbatim.
 - Exit codes: `0` success, `1` user error, `2` timeout, `3` service/network, `4` internal.
 
 ## Hard Rules
 
-- **Never** ask the user for a private key — the local wallet is auto-generated.
-- **Never** display the full card number, CVV, or expiry. Output already redacts these to `•••• 1234`.
-- **Never** run `create-card` / `create-image` / `wallet-init` / `wallet-gas` in the background — they may open a WalletConnect QR window that needs user attention.
+- **Never** ask the user for a private key — the local session wallet is auto-generated.
+- **Never** hard-code model ids — vendors rename, always pull from `aigateway sb tools` first.
+- **Never** use a category key as a model id (`--model tts` is wrong; `--model minimax/speech-01-turbo` is right).
+- **Never** run `wallet-topup` / `wallet-gas` / `sb invoke` (with an underfunded wallet) in the background — they may open a WalletConnect QR window that needs user attention.
 - **Never** auto-retry rejected / timed-out signatures.
+- **Never** re-invoke on `DOWNLOAD_FAILED` — the URL is still in `data.downloaded[].url`.
 
 ## Full Reference
 

@@ -58,11 +58,11 @@ If you're in a custodial / server context, inject the key via env var instead:
 EVM_PRIVATE_KEY=0x...  aigateway wallet-balance
 ```
 
-### QR window doesn't open during `wallet-topup`
+### QR window doesn't open during `wallet-topup` / `wallet-gas`
 
 The CLI tries `open` (macOS) / `start` (Windows) / `xdg-open` (Linux). In headless environments, it prints the file path. Open `file:///tmp/aigateway-qr.html` manually in any browser. If you're on a remote VM, port-forward `127.0.0.1:<status-port>` (printed in stderr) and open the file locally instead.
 
-**Headless servers should never run `wallet-topup` interactively** — see [merchant-integration.md § 3.3](./recipes/merchant-integration.md) for the workstation pre-funding pattern.
+**Headless servers should never run `wallet-topup` / `wallet-gas` interactively** — see [merchant-integration.md § 3.3](./recipes/merchant-integration.md) for the workstation pre-funding pattern.
 
 ### `error.code: PAYMENT_TIMEOUT`
 
@@ -76,12 +76,13 @@ You (or the user) tapped "Reject" in the wallet app. Same as above — re-run on
 
 Likely causes:
 1. The `wallet-topup` you ran was on a **different** session key. Verify `aigateway wallet-balance` shows the same address you funded.
-2. The on-chain tx hasn't confirmed yet. BSC normally confirms within 3 seconds; if longer, check `~/.aigateway/update.log` and the explorer.
-3. You funded in the wrong network (BSC vs. ETH). aigateway only reads USDT on **BSC** (chain id 56, contract `0x55d3...955`).
+2. The on-chain tx hasn't confirmed yet. BSC normally confirms within 3 seconds; if longer, check the explorer.
+3. You funded in the wrong network (BSC vs. ETH). aigateway only reads USDT on **BSC** (chain id 56).
+4. The call's required USDT exceeded your topped-up amount. `error.required` shows what the model needed; rerun `sb invoke` with a larger `--topup-amount`, or run `wallet-topup --amount <n>` separately.
 
 ### `error.code: INSUFFICIENT_BNB`
 
-`wallet-withdraw` and the one-time approve in `wallet-topup` are direct on-chain transactions and need BNB for gas. Run:
+`wallet-withdraw` and the one-time approve inside `wallet-topup` are direct on-chain transactions and need BNB for gas. Run:
 
 ```bash
 aigateway wallet-gas --amount 0.001
@@ -104,6 +105,48 @@ sleep 3 && aigateway wallet-balance
 
 If reproducible, file an issue.
 
+## `sb invoke` / `sb tools`
+
+### `error.code: MISSING_MODEL` / `INVALID_MODEL_ID`
+
+You didn't pass `--model`, or the id you passed isn't in the live catalog. Run:
+
+```bash
+aigateway sb tools                       # list everything
+aigateway sb tools --category image      # narrow to a category
+aigateway sb tools --model <id>          # confirm a specific id + see its effectiveSchema
+```
+
+Never hard-code model ids in long-lived prompts — vendors rename, the gateway catalog is the source of truth.
+
+### `error.code: MISSING_INPUTS` / `INVALID_INPUTS`
+
+`sb invoke` validates `--inputs` against the live catalog **before** any payment round-trip. Inspect `error.errors[]` — each item carries `{ field, kind, message }`, with `kind ∈ {missing, enum, type, range}`. `error.required[]` lists every required field for the chosen model.
+
+Common cases:
+- `video` model without `inputs.duration_seconds` (1–300).
+- `stt` model without `inputs.duration_minutes` (1–360).
+- `tts` model without `inputs.text`.
+- Image `aspect_ratio` not in the enum (e.g. `"square"` instead of `"1:1"`).
+
+Re-pull the schema with `aigateway sb tools --model <id>` and fix the JSON.
+
+### `error.code: INVALID_INPUTS_JSON`
+
+Your `--inputs` string couldn't be parsed. From a shell, use `JSON.stringify(...)` in your wrapper (Node.js / Python) and pass the result with single quotes around the whole argument. Alternatively pass `--inputs @path/to/inputs.json` to read from a file.
+
+### `error.code: MODEL_PRICING_NOT_CONFIGURED`
+
+The catalog lists the model but the gateway has no price entry for it yet (operator-side gap). Pick another model from the same category; mention it to the AEON team if you specifically need that one.
+
+### `error.code: DOWNLOAD_FAILED` / `IMAGE_DOWNLOAD_FAILED`
+
+The paid call succeeded — money was charged — but the local file save failed (URL 404, timeout, disk full). The URL is still available in `data.downloaded[].url`. Re-fetch the URL directly, or rerun the same command with `--raw` to skip auto-download and inspect `raw`. **Do not re-invoke the model** unless you're prepared to pay again.
+
+### `error.code: CATALOG_FETCH_FAILED`
+
+`sb tools` couldn't reach the server. `sb invoke` will still run (server-side validation is the safety net), it'll just skip the local pre-validation step. Retry once; if it persists, check network connectivity to the configured `AIGATEWAY_SERVICE_URL`.
+
 ## Skill / Agent integration
 
 ### Skill not picked up by Cursor / Windsurf / Cline / Codex
@@ -122,18 +165,22 @@ The skill version is locked to `metadata.version` in the frontmatter. If you edi
 
 ```yaml
 metadata:
-  version: "0.1.1"   # was 0.1.0
+  version: "0.2.4"   # was 0.2.3
 ```
 
 Then `npx skills add AEON-Project/aigateway -g -y -f` (force) or re-run postinstall.
 
 ## Auto-upgrade (`update-check.mjs`)
 
+### `error.code: UPDATE_APPLIED`
+
+The CLI detected a newer published version, upgraded itself in-place, and **did not execute your command**. The envelope carries `error.from` / `error.to`. Rerun the same command verbatim on the new version. Do not treat this as a generic timeout.
+
 ### Auto-upgrade doesn't seem to run
 
-Check `~/.aigateway/update.log`. The upgrade is a detached background process and may take 1–2 minutes after the CLI is invoked. If the log shows a failure, the most common reasons are:
+Check `~/.aigateway/update.log`. The upgrade runs synchronously at startup; if the log shows a failure, the most common reasons are:
 
-- Your global npm registry needs auth and the background process can't prompt.
+- Your global npm registry needs auth and the foreground process can't prompt.
 - The user lacks permission to write to the global node_modules (run with sudo, or use nvm).
 
 You can force-upgrade manually:
@@ -144,10 +191,10 @@ npm install -g @aeon-ai-pay/aigateway@latest
 
 ### Block the auto-upgrade
 
-Currently no flag for this — but the upgrade is **non-blocking** and won't affect the current command. If you need a deterministic version (e.g. in CI), pin the install:
+Currently no flag for this. If you need a deterministic version (e.g. in CI), pin the install:
 
 ```bash
-npm install -g @aeon-ai-pay/aigateway@0.1.0
+npm install -g @aeon-ai-pay/aigateway@<version>
 ```
 
 The check still runs but the install is idempotent at the same version.
@@ -167,20 +214,21 @@ Causes:
 
 ### Spawning hangs forever
 
-If you spawn `wallet-topup` / `create-card` / `create-image` in a context where the QR window can't be shown (CI, server, headless), the CLI waits 5 minutes for the WalletConnect signature, then exits with `PAYMENT_TIMEOUT`. **Never spawn these without pre-funded session keys** — see [merchant-integration.md § 3](./recipes/merchant-integration.md).
+If you spawn `wallet-topup` / `wallet-gas` (or `sb invoke` against an empty wallet) in a context where the QR window can't be shown (CI, server, headless), the CLI waits 5 minutes for the WalletConnect signature, then exits with `PAYMENT_TIMEOUT`. **Never spawn these without a pre-funded session key** — see [merchant-integration.md § 3](./recipes/merchant-integration.md).
 
 ## Service / network
 
 ### `error.code: SERVICE_UNAVAILABLE`
 
-Upstream is degraded. Retry with exponential backoff (1s → 4s → 16s, max 3 attempts). If it persists for more than 5 minutes, contact AEON support with the `appId` and an example `orderNo`.
+Upstream is degraded. Retry with exponential backoff (1s → 4s → 16s, max 3 attempts). If it persists for more than 5 minutes, contact AEON support with the `appId` and an example `transaction` hash.
 
 ### Staging vs. production
 
 The default service URL is `https://ai-api.aeon.xyz` (production). To use a staging endpoint:
 
 ```bash
-AIGATEWAY_SERVICE_URL=https://staging-x402.aeon.xyz  aigateway create-card --amount 5
+AIGATEWAY_SERVICE_URL=https://staging-x402.aeon.xyz \
+  aigateway sb tools --category image
 ```
 
 ## Getting more diagnostics

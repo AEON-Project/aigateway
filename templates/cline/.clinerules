@@ -1,26 +1,36 @@
-# aigateway — Virtual Card via x402
+# aigateway — AI Tool Invocation via x402
 
-Trigger this rule when the user wants to create / query / manage one-time virtual debit cards funded via USDT on BSC.
+Trigger this rule when the user wants to invoke any paid AI tool (image, video, TTS, STT, search, scraping, social data, email, SMS, document parsing, UI generation, embeddings, finance, news, utility) funded via USDT on BSC.
 
 ## Setup (run once)
 
 ```bash
-aigateway wallet-init
+aigateway wallet-init                 # auto-creates a local session wallet
+aigateway wallet-topup --amount 5     # one-time WalletConnect funding + facilitator approve (gasless from here)
 ```
 
-`envelope.data.ready === true` means ready.
+`envelope.data.ready === true` means ready. If `envelope.data.needsTopup === true`, run `wallet-topup` next.
 
 ## Commands
 
 ```bash
-aigateway create-card --amount <USD> --poll                      # Create card, poll until ready
-aigateway create-card --amount <USD> --app-id <merchantId> --poll # With merchant app ID
-aigateway create-card-status --order-no <orderNo>                       # Single status query
-aigateway create-card-status --order-no <orderNo> --poll                # Poll until terminal
-aigateway wallet-balance                                            # Show local wallet balance
-aigateway wallet-topup --amount <USDT>                             # WalletConnect: USDT top-up
-aigateway wallet-gas --amount <BNB>                                # WalletConnect: BNB gas top-up
-aigateway wallet-withdraw [--to 0x...] [--amount <USDT>]           # Reclaim funds
+# Discover models (live catalog, free)
+aigateway sb tools                                                            # full catalog
+aigateway sb tools --category <key>                                           # e.g. image / video / tts / stt / search / scraper / ...
+aigateway sb tools --model <id>                                               # single model + effectiveSchema
+aigateway sb tools --tier <price|balanced|quality>                            # filter by tier
+
+# Paid invocation (the only paid call)
+aigateway sb invoke --model <id> --inputs '<json>' [--output <dir>] [--raw]
+
+# Optional merchant app id on any command
+aigateway sb invoke --model <id> --inputs '<json>' --app-id <merchantId>
+
+# Wallet management
+aigateway wallet-balance                                                      # show local USDT / BNB
+aigateway wallet-topup --amount <USDT>                                        # WalletConnect: USDT top-up
+aigateway wallet-gas --amount <BNB>                                           # WalletConnect: BNB top-up
+aigateway wallet-withdraw [--to 0x...] [--amount <USDT>]                      # reclaim funds
 ```
 
 ## Envelope
@@ -32,22 +42,30 @@ stdout = one line of JSON.
 
 Branch on `error.code`. Exit codes: `0`/`1`/`2`/`3`/`4` = success/user/timeout/service/internal.
 
+`sb invoke` success payload: `model`, `inputs`, `transaction`, `downloaded[]` (binary artifacts saved locally), `raw` (upstream JSON), `balance` (`initial`/`before`/`after`/`charged`/`topup`). Binary outputs default to `~/aigateway-{images,videos,audio}/`.
+
 ## Hard Rules
 
 - No private keys from the user.
-- No full card numbers, CVV, or expiry in output (already sanitized).
-- WalletConnect-opening commands (`create-card` / `create-image` when underfunded / `wallet-init` / `wallet-gas`) must run in foreground.
+- No hard-coded model ids — always pull from `aigateway sb tools` first.
+- No category-as-model ids (`--model tts` is wrong; `--model minimax/speech-01-turbo` is right).
+- WalletConnect-opening commands (`wallet-topup` / `wallet-gas`, plus `sb invoke` when underfunded) must run in foreground.
 - No auto-retry on `PAYMENT_REJECTED` or `PAYMENT_TIMEOUT`.
+- No re-invoke on `DOWNLOAD_FAILED` — re-fetch `data.downloaded[].url`.
 
 ## Recovery Cheatsheet
 
 | Code | Action |
 | --- | --- |
-| `AMOUNT_OUT_OF_RANGE` | Show `error.min`/`error.max`; ask user. |
-| `INSUFFICIENT_USDT` | `aigateway wallet-init` then retry. |
+| `MISSING_MODEL` / `INVALID_MODEL_ID` | Run `aigateway sb tools` and pick a valid id. |
+| `MISSING_INPUTS` / `INVALID_INPUTS` | Read `error.errors[]` (`field` + `kind`); rebuild `--inputs` from `effectiveSchema` (re-pull via `sb tools --model <id>`). |
+| `INVALID_INPUTS_JSON` | Quoting bug. Use `JSON.stringify` or `--inputs @path/to/file.json`. |
+| `INSUFFICIENT_USDT` / `TOPUP_REQUIRED` | `aigateway wallet-topup --amount <n>` (use `error.presets`) or pass `--topup-amount <n>` to `sb invoke`. |
 | `INSUFFICIENT_BNB` | `aigateway wallet-gas` then retry. |
-| `POLL_TIMEOUT` | Note `orderNo`; query later. |
+| `MODEL_PRICING_NOT_CONFIGURED` | Pick another model. |
 | `PAYMENT_REJECTED` / `PAYMENT_TIMEOUT` | Ask user before retrying. |
-| `SERVICE_UNAVAILABLE` | Exponential backoff retry. |
+| `DOWNLOAD_FAILED` / `IMAGE_DOWNLOAD_FAILED` | Call already paid; re-fetch `data.downloaded[].url`. |
+| `UPDATE_APPLIED` | CLI upgraded itself; rerun the same command verbatim. |
+| `SERVICE_UNAVAILABLE` / `PAYMENT_FETCH_FAILED` / `CATALOG_FETCH_FAILED` | Exponential backoff retry. |
 
 Full reference: `docs/output-schema.md`, `docs/exit-codes.md`, `docs/recipes/`.

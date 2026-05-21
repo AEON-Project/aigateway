@@ -6,15 +6,16 @@ This recipe shows how to invoke `aigateway` from inside an agent product (Node.j
 
 - `@aeon-ai-pay/aigateway` installed (globally for system-wide use, or as a dependency in your project).
 - A working session wallet — run `aigateway wallet-init` once on the host.
+- First-time funding done with `aigateway wallet-topup --amount 5` (one-time WalletConnect flow + facilitator `approve`). After this, all `sb invoke` calls are gasless and headless-friendly.
 
-> ⚠️ The CLI uses **WalletConnect for funding**, which opens a browser window with a QR code. If your agent runs headless or in containers without a display, fund the session wallet ahead of time (`aigateway wallet-init`) on a workstation, then ship the `~/.aigateway/config.json` to the runtime host. Agents should never embed user main-wallet private keys.
+> ⚠️ `wallet-topup` opens a browser window with a WalletConnect QR code. If your agent runs headless or in containers without a display, fund the session wallet ahead of time on a workstation, then ship the `~/.aigateway/config.json` (or its `privateKey`) to the runtime host. Agents should never embed user main-wallet private keys.
 
 ## Node.js — Spawn & Parse Envelope
 
 ```js
 import { spawn } from "node:child_process";
 
-function runAEON AI Gateway(args) {
+function runAigateway(args) {
   return new Promise((resolve, reject) => {
     const child = spawn("aigateway", args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
@@ -33,18 +34,20 @@ function runAEON AI Gateway(args) {
   });
 }
 
-// Example: create a $5 card and poll until terminal
-const { envelope, exitCode } = await runAEON AI Gateway([
+// Example: invoke an AI tool (image generation) via the x402 paid entry point
+const { envelope, exitCode } = await runAigateway([
   "--quiet",
-  "create",
-  "--amount", "5",
+  "sb", "invoke",
+  "--model", "replicate/black-forest-labs/flux-schnell",
+  "--inputs", JSON.stringify({ prompt: "a cyberpunk fox", aspect_ratio: "1:1" }),
   "--app-id", "MY_AGENT_001",
-  "--poll",
 ]);
 
 if (envelope.ok) {
-  const { orderNo, data } = envelope.data;
-  console.log("Card ready:", data.model?.cardNumber, "order:", orderNo);
+  const { model, transaction, downloaded, balance } = envelope.data;
+  console.log(`Done (${model}) tx=${transaction}`);
+  for (const d of downloaded) console.log(`Saved: ${d.localPath} (${d.sizeHuman})`);
+  console.log(`Charged ${balance.charged} USDT, remaining ${balance.after}`);
 } else {
   // See docs/recipes/error-recovery.md for code-by-code guidance
   console.error(`Failed [${envelope.error.code}] (exit ${exitCode}):`, envelope.error.message);
@@ -74,22 +77,40 @@ def run_aigateway(args):
     envelope = json.loads(result.stdout.strip().splitlines()[-1])
     return result.returncode, envelope
 
-exit_code, env = run_aigateway(["create", "--amount", "5", "--poll"])
+exit_code, env = run_aigateway([
+    "sb", "invoke",
+    "--model", "replicate/black-forest-labs/flux-schnell",
+    "--inputs", json.dumps({"prompt": "a cyberpunk fox"}),
+])
 if env["ok"]:
-    print("Card ready:", env["data"]["data"]["model"]["cardNumber"])
+    for d in env["data"]["downloaded"]:
+        print("Saved:", d["localPath"])
 else:
     print(f"Failed [{env['error']['code']}] exit={exit_code}: {env['error']['message']}")
 ```
 
-## Probing Without Cost — `--dry-run`
+## Discovering Models — `sb tools`
 
-To validate inputs, balances, and allowance **without** signing or transacting, use `--dry-run` on `create-card`:
+Before calling `sb invoke`, fetch the live catalog with `sb tools` to pick a valid `model` and learn the expected `inputs` schema:
 
 ```bash
-aigateway --quiet create-card --amount 5 --dry-run | jq '.data.will, .data.decision'
+# Single model + effectiveSchema (most useful for agents)
+aigateway --quiet sb tools --model replicate/black-forest-labs/flux-schnell | jq '.data'
+
+# All models in a category
+aigateway --quiet sb tools --category image | jq '.data.categories[0].models[].id'
+
+# Cheapest tier across all categories
+aigateway --quiet sb tools --tier price
 ```
 
-This is ideal for integration tests, configuration smoke checks, and "is everything ready?" probes.
+The catalog is fetched live from the server each call (no local cache). Each model carries `price`, `priceUnit`, `tier`, and an optional `inputsOverride`; each category carries `defaultInputsSchema`.
+
+## Probing Without Cost
+
+`sb invoke` performs client-side validation of `--model` and `--inputs` against the live catalog **before** any x402 round-trip. Invalid model ids and missing/invalid fields return `INVALID_MODEL_ID` / `MISSING_INPUTS` / `INVALID_INPUTS` locally, with zero USDT spent.
+
+For wallet-only smoke tests, `aigateway wallet-balance` is read-only and never signs anything.
 
 ## Exit Code Strategy
 
@@ -99,7 +120,7 @@ Treat exit codes as a fast filter, then branch on `error.code` for nuance:
 switch (exitCode) {
   case 0: /* success */ break;
   case 1: /* user / config — surface to caller for correction */ break;
-  case 2: /* timeout — safe to retry; card may still be provisioning */ break;
+  case 2: /* timeout — safe to retry the same command */ break;
   case 3: /* network / service — exponential backoff retry */ break;
   case 4: /* internal — log + fail loud */ break;
 }

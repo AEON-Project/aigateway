@@ -12,7 +12,7 @@
  *   - data.needsTopup=true → wallet-topup must run first (the envelope includes presets / minTopup / reason)
  *   - data.needsTopup=false → can proceed directly to sb invoke
  */
-import { loadConfig, saveConfig } from "../config.mjs";
+import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
 import { getWalletBalance, getAllowance } from "../balance.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
@@ -20,6 +20,7 @@ import {
   TOPUP_PRESETS,
 } from "../funding.mjs";
 import { emitOk, logInfo } from "../output.mjs";
+import { claimCoupon } from "../coupon.mjs";
 
 export async function initWallet(opts) {
   const config = loadConfig();
@@ -90,12 +91,36 @@ export async function initWallet(opts) {
     topupReason = "no_approve";
   }
 
+  // device id 在首次 init 时生成,后续 claim / 审计复用
+  const deviceId = getOrCreateDeviceId();
+
+  // AEON x BNB Chain AI Agent Campaign — wallet 新建时尝试领取一次优惠券 token
+  // 已领过 / 名额满 / 服务端不通 → 安静失败,不阻塞 wallet-init 主流程
+  let coupon = null;
+  if (created) {
+    const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+    coupon = await claimCoupon({
+      serviceUrl,
+      userAddress: config.address,
+      deviceId,
+      appId,
+    });
+    if (coupon?.ok) {
+      logInfo(`🎁 Claimed ${coupon.tokenAmount} coupon credits (tx: ${coupon.txHash})`);
+    } else if (coupon?.code === "ALREADY_CLAIMED") {
+      logInfo("Coupon already claimed before.");
+    } else if (coupon?.code) {
+      logInfo(`Coupon claim skipped: ${coupon.code} — ${coupon.errorMsg || ""}`);
+    }
+  }
+
   const data = {
     ready: true,
     created,
     appId,
     mode: config.mode || null,
     address: config.address || null,
+    deviceId,
     mainWallet: config.mainWallet || null,
     serviceUrl: config.serviceUrl || null,
     usdt,
@@ -106,6 +131,7 @@ export async function initWallet(opts) {
     minTopup: MIN_TOPUP_USDT,
     presets: TOPUP_PRESETS,
     chainCheck: chainCheckOk ? "ok" : { error: chainCheckError },
+    coupon,                 // null(未尝试) | { ok, code, tokenAmount?, txHash?, errorMsg? }
   };
   emitOk("wallet-init", data, data);
 }

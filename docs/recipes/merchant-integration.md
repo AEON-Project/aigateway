@@ -33,8 +33,8 @@ Both modes use the same CLI; only the source of the session key (`EVM_PRIVATE_KE
 Your product walks the user through:
 
 ```bash
-aigateway wallet-init                    # one-time, auto-creates local key
-aigateway wallet-topup --amount 5         # user scans QR to load 5 USDT
+aigateway wallet-init                     # one-time, auto-creates local session key
+aigateway wallet-topup --amount 5         # user scans QR to load 5 USDT + tiny BNB for first-time approve
 ```
 
 Subsequent paid calls are spawned by your product (agent / IDE plugin / app):
@@ -59,11 +59,18 @@ function runAigateway(args) {
   });
 }
 
-const { envelope } = await runAigateway(["create-card", "--amount", "5", "--poll"]);
+const inputs = { prompt: "a cyberpunk fox", aspect_ratio: "1:1" };
+const { envelope } = await runAigateway([
+  "sb", "invoke",
+  "--model", "replicate/black-forest-labs/flux-schnell",
+  "--inputs", JSON.stringify(inputs),
+]);
+
 if (envelope.ok) {
-  showCard(envelope.data);  // card number already redacted to "•••• 4242"
+  showImages(envelope.data.downloaded);                   // [{ localPath, format, width, height, sizeHuman, ... }]
 } else if (envelope.error.code === "TOPUP_REQUIRED") {
-  promptUserToTopup(envelope.error.presets);  // [5, 10, 20, 50]
+  // Headless / non-TTY ran out of USDT. Use envelope.error.presets and rerun.
+  promptUserToTopup(envelope.error.presets);              // [5, 10, 20, 50]
 }
 ```
 
@@ -77,7 +84,10 @@ aigateway already supports `EVM_PRIVATE_KEY` — no config file needed:
 
 ```bash
 EVM_PRIVATE_KEY=0xYourMerchantSessionKey \
-  aigateway create-card --amount 5 --app-id MERCHANT_ACME_001 --poll
+  aigateway sb invoke \
+    --model replicate/black-forest-labs/flux-schnell \
+    --inputs '{"prompt":"a cyberpunk fox"}' \
+    --app-id MERCHANT_ACME_001
 ```
 
 ### 3.2 Express backend example
@@ -107,23 +117,30 @@ function runCmd(args) {
 }
 
 // User paid you in fiat upstream, now you fulfil via aigateway
-app.post("/api/issue-card", async (req, res) => {
-  const { userId, amount } = req.body;
+app.post("/api/generate-image", async (req, res) => {
+  const { userId, prompt } = req.body;
 
   // Your KYC / fraud / balance checks
-  if (!await canIssueCard(userId, amount)) return res.status(403).end();
+  if (!await canSpend(userId)) return res.status(403).end();
 
-  const { code, envelope } = await runCmd(["create-card", "--amount", String(amount), "--poll"]);
+  const { code, envelope } = await runCmd([
+    "sb", "invoke",
+    "--model", "replicate/black-forest-labs/flux-schnell",
+    "--inputs", JSON.stringify({ prompt }),
+  ]);
 
   if (envelope.ok) {
-    await db.cards.insert({
+    const [first] = envelope.data.downloaded;
+    await db.generations.insert({
       userId,
-      orderNo: envelope.data.orderNo,
-      cardNumber: envelope.data.data.model.cardNumber,
-      amount,
-      issuedAt: new Date(),
+      model: envelope.data.model,
+      transaction: envelope.data.transaction,
+      localPath: first?.localPath,
+      url: first?.url,
+      charged: envelope.data.balance.charged,
+      createdAt: new Date(),
     });
-    res.json({ ok: true, orderNo: envelope.data.orderNo });
+    res.json({ ok: true, transaction: envelope.data.transaction, file: first?.localPath });
   } else {
     await logErr(userId, envelope.error);
     res.status(500).json({ error: envelope.error.code, message: envelope.error.message });
@@ -142,7 +159,7 @@ EVM_PRIVATE_KEY=<your-merchant-session-key> \
   aigateway wallet-topup --amount 50 --app-id MERCHANT_ACME_001
 ```
 
-Scan QR with your treasury wallet, confirm two transactions (USDT + 0.0003 BNB for one-time approve). After this, the production server can issue cards / images **without ever opening WalletConnect**.
+Scan QR with your treasury wallet, confirm two transactions (USDT + a small amount of BNB for the one-time `approve`). After this, the production server can issue `sb invoke` calls **without ever opening WalletConnect** until USDT is depleted.
 
 ### 3.4 Low-balance alerting
 
@@ -168,24 +185,39 @@ function handleEnvelope(envelope, exitCode) {
 
     case "INSUFFICIENT_USDT":
     case "TOPUP_REQUIRED":
-      await yourTopupFlow();
+      await yourTopupFlow(envelope.error.presets);       // [5, 10, 20, 50]
       return { ok: false, retry: true };
 
-    case "AMOUNT_OUT_OF_RANGE":
-      return { ok: false, userMessage: `Amount must be $${envelope.error.min}~${envelope.error.max}` };
+    case "INSUFFICIENT_BNB":
+      await yourGasTopupFlow();                          // aigateway wallet-gas
+      return { ok: false, retry: true };
 
-    case "POLL_TIMEOUT":
-      await scheduleStatusCheck(envelope.error.orderNo);
-      return { ok: false, asyncPending: true };
+    case "MISSING_MODEL":
+    case "INVALID_MODEL_ID":
+      return { ok: false, userMessage: "Pick a model first (run `aigateway sb tools`)" };
+
+    case "MISSING_INPUTS":
+    case "INVALID_INPUTS":
+    case "INVALID_INPUTS_JSON":
+      // envelope.error.errors[] = [{ field, kind, message }], plus required[] / properties[]
+      return { ok: false, validation: envelope.error };
+
+    case "MODEL_PRICING_NOT_CONFIGURED":
+      return { ok: false, userMessage: "This model is not yet priced; pick another" };
 
     case "SERVICE_UNAVAILABLE":
     case "PAYMENT_FETCH_FAILED":
+    case "CATALOG_FETCH_FAILED":
     case "BALANCE_CHECK_FAILED":
       return { ok: false, retryWithBackoff: true };
 
     case "PAYMENT_REJECTED":
     case "PAYMENT_TIMEOUT":
       return { ok: false, userMessage: "Payment not confirmed" };
+
+    case "DOWNLOAD_FAILED":
+      // Generation succeeded; original URL still in envelope.error.url (if surfaced) or downloaded[].url
+      return { ok: false, partial: true };
 
     default:
       throw new UnexpectedError(envelope.error);
@@ -197,23 +229,20 @@ Full code table: [exit-codes.md](../exit-codes.md). Concrete recovery actions pe
 
 ## 5. Sandbox / test environments
 
-### Dry-run (no real USDT)
+### Validation-only probes
 
-```bash
-aigateway create-card --amount 5 --dry-run --app-id TEST000001
-# envelope.data.dryRun = true; preflight passes, nothing signed
-```
+`sb invoke` performs client-side schema validation against the live catalog **before** any payment round-trip — so an invalid `--model` or malformed `--inputs` fails locally with zero USDT spent. Use this to validate your subprocess wrapper + envelope parser in CI without burning real budget.
 
 ### Staging service URL
 
 ```bash
 AIGATEWAY_SERVICE_URL=https://staging-x402.aeon.xyz \
-  aigateway create-card --amount 5 --app-id YOUR_TEST_APPID --poll
+  aigateway sb invoke --model <id> --inputs '<json>' --app-id YOUR_TEST_APPID
 ```
 
 ### CI
 
-Never invoke real paid commands in CI. Use `--dry-run` to validate your subprocess wrapper + envelope parser only.
+Never invoke real paid commands in CI. Wrap your test fixtures around invalid-input probes (so the call short-circuits with `MISSING_INPUTS` / `INVALID_MODEL_ID`) or use `wallet-balance` (read-only).
 
 ## 6. Operational checklist for merchants
 
@@ -224,15 +253,15 @@ Never invoke real paid commands in CI. Use `--dry-run` to validate your subproce
 | Top-up (manual, workstation) | When USDT is low | `wallet-topup --amount <n>` |
 | Withdraw to merchant treasury | Monthly / quarterly | `wallet-withdraw --to <treasury>` |
 | Auto version upgrade | Automatic | (handled by `src/update-check.mjs`) |
-| Reconciliation | Per settlement | Use `envelope.data.orderNo` / `transaction` to match on-chain + backend records |
+| Reconciliation | Per settlement | Use `envelope.data.transaction` / `paymentResponse.txHash` to match on-chain + backend records |
 
 ## 7. Security checklist
 
 - **Session key (custodial mode)** = funds. **Store in Vault / KMS / encrypted env var only**. Never commit to git or write to plaintext `.env` files in production.
 - **`appId` is not a secret.** Leaking it doesn't lose money, but could let someone burn API quota under your identity. If the backend requires authenticated calls, the AEON team will issue a separate API key — confirm with them.
-- **Card PII**: `envelope.data.data.model.cardNumber` is already redacted to `"•••• 4242"`. The full PAN / CVV / expiry is retrievable only via the merchant-side API with strong auth (not exposed in this CLI). Don't try to capture full card data from the CLI.
 - **WalletConnect**: only run `wallet-topup` / `wallet-gas` / `wallet-init` on a workstation with a wallet app. Don't let your production server auto-spawn QR windows.
 - **`EVM_PRIVATE_KEY` env var**: scope it to the process that needs it (e.g. systemd unit, k8s secret-mounted file). Don't echo it to logs.
+- **Generated artifacts**: `sb invoke` saves binary outputs (images / videos / audio) under `~/aigateway-{images,videos,audio}/` by default. In custodial deployments, override with `--output <dir>` and treat the contents as user data (retention, access control).
 
 ## 8. See also
 

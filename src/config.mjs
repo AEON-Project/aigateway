@@ -5,6 +5,7 @@
  * AEON AI Gateway uses a single x402 service (ai-api.aeon.xyz).
  */
 import {readFileSync, writeFileSync, mkdirSync, chmodSync} from "fs";
+import {randomUUID} from "crypto";
 import {join} from "path";
 import {homedir} from "os";
 
@@ -22,6 +23,18 @@ export function loadConfig() {
     } catch {
         return {...DEFAULTS};
     }
+}
+
+/**
+ * 读取或生成 deviceId(持久化到 config.json 复用)。
+ * 用于活动优惠券防刷审计 + 后端识别同设备多钱包。
+ */
+export function getOrCreateDeviceId() {
+    const cfg = loadConfig();
+    if (cfg.deviceId) return cfg.deviceId;
+    const deviceId = randomUUID();
+    saveConfig({...cfg, deviceId});
+    return deviceId;
 }
 
 export function saveConfig(config) {

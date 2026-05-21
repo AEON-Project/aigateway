@@ -1,22 +1,26 @@
-# aigateway — Virtual Card via x402
+# aigateway — AI Tool Invocation via x402
 
-When the user wants to create / query / manage a one-time virtual debit card funded with USDT on BSC, use the `aigateway` CLI.
+When the user wants to invoke any paid AI tool (image, video, TTS, STT, search, scraping, social data, email, SMS, document parsing, UI generation, embeddings, finance, news, utility) funded with USDT on BSC, use the `aigateway` CLI.
 
 ## First-time setup (always run once)
 
 ```bash
-aigateway wallet-init
+aigateway wallet-init                 # auto-creates a local session wallet
+aigateway wallet-topup --amount 5     # one-time WalletConnect funding + facilitator approve (gasless from here)
 ```
 
-`envelope.data.ready === true` means ready.
+`envelope.data.ready === true` means ready. If `envelope.data.needsTopup === true`, run `wallet-topup` next.
 
 ## Commands
 
 | Intent | Command |
 | --- | --- |
-| Create a $N card and poll until ready | `aigateway create-card --amount <N> --poll` |
-| Specify merchant app ID | `aigateway create-card --amount <N> --app-id <merchantId> --poll` |
-| Check status of an existing order | `aigateway create-card-status --order-no <orderNo>` |
+| List all available tool models | `aigateway sb tools` |
+| Narrow by category | `aigateway sb tools --category <image\|video\|tts\|stt\|search\|scraper\|social_data\|email\|sms\|document\|ui_generation\|embeddings\|financial\|news\|utility>` |
+| Inspect a single model + `effectiveSchema` | `aigateway sb tools --model <id>` |
+| Filter by price tier | `aigateway sb tools --tier <price\|balanced\|quality>` |
+| Invoke a tool (the only paid call) | `aigateway sb invoke --model <id> --inputs '<json>' [--output <dir>] [--raw]` |
+| Optional merchant app id | append `--app-id <merchantId>` to any command |
 | Show local wallet balance | `aigateway wallet-balance` |
 | Top up USDT (interactive WalletConnect) | `aigateway wallet-topup --amount <USDT>` |
 | Top up BNB for gas (interactive WalletConnect) | `aigateway wallet-gas --amount <BNB>` |
@@ -31,18 +35,25 @@ Every command emits one line of JSON to stdout (the envelope):
 
 Branch on `error.code` (stable). Exit codes: `0` success, `1` user, `2` timeout, `3` service/network, `4` internal.
 
+`sb invoke` success payload: `model`, `inputs`, `transaction`, `downloaded[]` (binary artifacts), `raw` (upstream JSON), `balance` (`initial`/`before`/`after`/`charged`/`topup`). Binary outputs default to `~/aigateway-{images,videos,audio}/`.
+
 ## Hard Rules
 
-- Never ask for a private key. The local wallet is auto-generated.
-- Never display full card numbers, CVV, or expiry — output is already sanitized.
-- Never run `create-card` / `create-image` / `wallet-init` / `wallet-gas` in the background; they open a QR window requiring user attention.
+- Never ask for a private key. The local session wallet is auto-generated.
+- Never hard-code model ids — vendors rename, always pull `aigateway sb tools` first.
+- Never use a category key as a model id (e.g. `--model tts` is wrong; `--model minimax/speech-01-turbo` is right).
+- Never run `wallet-topup` / `wallet-gas` / `sb invoke` (when underfunded) in the background; they open a QR window requiring user attention.
 - Never auto-retry `PAYMENT_REJECTED` / `PAYMENT_TIMEOUT`.
+- Never re-invoke a model on `DOWNLOAD_FAILED` — the URL is still in `data.downloaded[].url`.
 
 ## Common Recovery
 
-- `AMOUNT_OUT_OF_RANGE` → Show `error.min` / `error.max`, ask for a new amount.
-- `INSUFFICIENT_USDT` → Run `aigateway wallet-init`, then retry create.
+- `MISSING_MODEL` / `INVALID_MODEL_ID` → Run `aigateway sb tools` to pick a valid id.
+- `MISSING_INPUTS` / `INVALID_INPUTS` → Read `error.errors[]` (`field` + `kind`), rebuild `--inputs` from the model's `effectiveSchema` (re-pull via `sb tools --model <id>`).
+- `INSUFFICIENT_USDT` / `TOPUP_REQUIRED` → Use `error.presets`; run `aigateway wallet-topup --amount <n>` or pass `--topup-amount <n>` to `sb invoke`.
 - `INSUFFICIENT_BNB` → Run `aigateway wallet-gas`, then retry the failing op.
-- `POLL_TIMEOUT` → Note `orderNo`, ask user to query later with `aigateway create-card-status --order-no <orderNo>`.
+- `MODEL_PRICING_NOT_CONFIGURED` → Pick another model.
+- `DOWNLOAD_FAILED` / `IMAGE_DOWNLOAD_FAILED` → Re-fetch `data.downloaded[].url`; do not re-invoke.
+- `UPDATE_APPLIED` → CLI upgraded itself; rerun the same command verbatim.
 
 Full reference: `docs/output-schema.md`, `docs/exit-codes.md`, `docs/recipes/`.

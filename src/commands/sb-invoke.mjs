@@ -27,6 +27,7 @@ import { emitOk, emitErr, logInfo } from "../output.mjs";
 import { extractOutputs, resolveOutputDir, downloadOutputs } from "../tools-download.mjs";
 import { fetchCatalog, findModel } from "../catalog.mjs";
 import { validateInputs } from "../inputs-validator.mjs";
+import { CAMPAIGN_TOKEN_ADDRESS } from "../constants.mjs";
 
 /**
  * Parse `--inputs` value: either a JSON literal or `@path/to/file.json`.
@@ -151,10 +152,19 @@ export async function invoke(opts) {
   logInfo("Fetching payment requirements...");
   let paymentReq;
   let requiredUsdt;
+  let paymentMethod = "USDT"; // "USDT" | "COUPON"
   try {
     paymentReq = await fetchPaymentRequirements(url);
     requiredUsdt = paymentReq.amountUsdt;
-    logInfo(`Required: ${requiredUsdt} USDT (pay to ${paymentReq.payTo})`);
+    // 服务端在 402 响应里的 asset 字段如果等于活动 token 合约 → 本次走优惠券支付
+    if (paymentReq.asset && paymentReq.asset.toLowerCase() === CAMPAIGN_TOKEN_ADDRESS.toLowerCase()) {
+      paymentMethod = "COUPON";
+    }
+    if (paymentMethod === "COUPON") {
+      logInfo(`💳 Paid with coupon: ${requiredUsdt} (token ${paymentReq.asset})`);
+    } else {
+      logInfo(`Required: ${requiredUsdt} USDT (pay to ${paymentReq.payTo})`);
+    }
   } catch (e) {
     // Server may return HTTP 400 with structured { code, msg } for pricing / body errors.
     // Surface that code as-is so the agent can react (e.g. MODEL_PRICING_NOT_CONFIGURED).
@@ -382,6 +392,8 @@ export async function invoke(opts) {
       // unwrap server envelope: { payer, transaction, data: <upstream-response> } → <upstream-response>
       raw: response.data?.data ?? response.data,
       paymentResponse,
+      paymentMethod,           // "USDT" | "COUPON" — agent / CLI 可据此显示扣款方式
+      paymentToken: paymentReq.asset,
       balance: {
         initial: balanceInitialUsdt,
         before: balanceBeforeChargeUsdt,

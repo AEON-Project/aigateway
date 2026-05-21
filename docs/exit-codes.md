@@ -6,13 +6,13 @@ The `aigateway` CLI returns a stable exit code that maps to the category of outc
 | ---: | -------- | ------- |
 | `0` | Success | Command completed and produced an `ok: true` envelope. |
 | `1` | User error | Validation, configuration, balance, or user-side rejection. Caller should fix input and retry. |
-| `2` | Timeout | Polling, WalletConnect, signature, or on-chain wait exceeded its limit. The underlying operation may still complete asynchronously (e.g. card may still be provisioning). |
+| `2` | Timeout | Polling, WalletConnect, signature, or on-chain wait exceeded its limit. The underlying operation may still complete asynchronously. |
 | `3` | Service / network | Upstream service unavailable, network error, on-chain revert. Generally retryable after backoff. |
 | `4` | Internal | Unexpected internal error in the CLI. Please file an issue if reproducible. |
 
 ## Error Code Reference
 
-The full set of `error.code` values, grouped by exit code, is defined in [`src/error-codes.mjs`](../src/error-codes.mjs).
+The full set of `error.code` values is defined in [`src/error-codes.mjs`](../src/error-codes.mjs); the table below mirrors that file.
 
 ### Exit 1 — User Error
 
@@ -20,17 +20,25 @@ The full set of `error.code` values, grouped by exit code, is defined in [`src/e
 | ---- | ---- |
 | `WALLET_NOT_CONFIGURED` | No local wallet. Run `aigateway wallet-init`. |
 | `SERVICE_URL_MISSING` | Service URL not configured. |
-| `AMOUNT_INVALID` | Amount could not be parsed. |
-| `AMOUNT_OUT_OF_RANGE` | Amount outside `amountLimits.min` ~ `amountLimits.max`. |
-| `AMOUNT_EXCEEDS_BALANCE` | `withdraw --amount` exceeds available USDT. |
+| `AMOUNT_INVALID` | Amount could not be parsed (e.g. `wallet-topup --amount`, `--topup-amount`). |
+| `AMOUNT_EXCEEDS_BALANCE` | `wallet-withdraw --amount` exceeds available USDT. |
 | `INSUFFICIENT_USDT` | USDT balance still insufficient after funding. |
 | `INSUFFICIENT_BNB` | No BNB for approve / withdraw gas. |
-| `NO_FUNDS` | Session wallet has zero USDT and zero BNB. |
+| `NO_FUNDS` | Session wallet has zero USDT and zero BNB (withdraw context). |
 | `NO_MAIN_WALLET` | `wallet-withdraw` invoked without `--to` and no `mainWallet` in config. |
-| `MISSING_PROMPT` | `create-image` invoked without `--prompt`. |
-| `TOPUP_REQUIRED` | `wallet-topup` / `create-card` / `create-image` running non-TTY with `usdt < 1` and no amount argument. Choose from `error.presets` (5/10/20/50) and rerun (`topup --amount <n>` or pass `--topup-amount <n>` to `create-*`). |
-| `TOPUP_AMOUNT_TOO_SMALL` | `topup --amount` (or `create-* --topup-amount`) below `MIN_TOPUP_USDT` (5 USDT) or the per-call minimum (`error.minTopup`). |
+| `MISSING_MODEL` | `sb invoke` invoked without `--model`. |
+| `MISSING_INPUTS` | `sb invoke --inputs` is missing, or required fields are absent. `error.errors[]` lists which. |
+| `INVALID_INPUTS` | Inputs failed schema validation. `error.errors[].kind ∈ {enum, type, range}`. |
+| `INVALID_INPUTS_JSON` | `--inputs` could not be parsed as JSON. |
+| `INPUTS_FILE_NOT_FOUND` | `--inputs @path` file does not exist. |
+| `INVALID_MODEL_ID` | Catalog or server rejected the model id. |
+| `CATEGORY_NOT_FOUND` | `sb tools --category` argument not in the live catalog. |
+| `MODEL_PRICING_NOT_CONFIGURED` | Catalog lists the model but the gateway has no price entry yet. |
+| `INVALID_BODY` | Server rejected the request body shape. |
+| `TOPUP_REQUIRED` | Non-TTY context, USDT below the per-call minimum. Choose from `error.presets` (filtered to ≥ `error.minTopup`) and rerun the failing command with `--topup-amount <n>` (or `wallet-topup --amount <n>`). |
+| `TOPUP_AMOUNT_TOO_SMALL` | `--topup-amount` (or `topup --amount`) below `error.minTopup`. |
 | `PAYMENT_REJECTED` | User rejected the transaction in their wallet. |
+| `WALLET_ERROR` | Generic wallet operation failure (treated as user-resolvable). |
 
 ### Exit 2 — Timeout
 
@@ -38,9 +46,8 @@ The full set of `error.code` values, grouped by exit code, is defined in [`src/e
 | ---- | ---- |
 | `PAYMENT_TIMEOUT` | WalletConnect / signature request timed out (5 minutes). |
 | `WC_SESSION_EXPIRED` | WalletConnect session dropped mid-flow. |
-| `POLL_TIMEOUT` | `create-card-status --poll` exhausted attempts. Card may still be provisioning. |
-| `TX_TIMEOUT` | On-chain receipt wait exceeded 60 s. |
-| `UPDATE_APPLIED` | The CLI just upgraded itself synchronously to a newer version. The previous command was not executed — the caller (or the agent) must rerun it on the new version. Envelope carries `error.from` / `error.to` showing the version transition. |
+| `TX_TIMEOUT` | On-chain receipt wait exceeded its limit. |
+| `UPDATE_APPLIED` | The CLI just upgraded itself synchronously to a newer version. The previous command was **not executed** — the caller (or the agent) must rerun it on the new version. Envelope carries `error.from` / `error.to` showing the version transition. |
 
 ### Exit 3 — Service / Network
 
@@ -48,13 +55,15 @@ The full set of `error.code` values, grouped by exit code, is defined in [`src/e
 | ---- | ---- |
 | `SERVICE_UNAVAILABLE` | Generic upstream / network failure. |
 | `PAYMENT_FETCH_FAILED` | First 402 request to the service failed. |
+| `CATALOG_FETCH_FAILED` | `sb tools` could not fetch the catalog from the server. |
 | `BALANCE_CHECK_FAILED` | RPC query to BSC failed. |
 | `ALLOWANCE_CHECK_FAILED` | RPC `allowance()` query failed. |
 | `TX_REVERTED` | On-chain transaction reverted. |
 | `WITHDRAW_FAILED` | Withdraw transaction failed (revert / RPC). |
-| `APPROVE_FAILED` | `wallet-init` could not broadcast or confirm the facilitator `approve()` tx. |
+| `APPROVE_FAILED` | `wallet-topup` could not broadcast or confirm the facilitator `approve()` tx. |
 | `FUNDING_FAILED` | WalletConnect funding flow failed (non-timeout / non-reject path). |
-| `IMAGE_DOWNLOAD_FAILED` | Generated image URL returned a non-200 / timed out. |
+| `IMAGE_DOWNLOAD_FAILED` | Generated image URL returned a non-200 / timed out. (Legacy alias; `sb invoke` now also emits `DOWNLOAD_FAILED` for non-image artifacts.) |
+| `DOWNLOAD_FAILED` | `sb invoke` could not save a binary artifact (image / video / audio) to disk. The upstream URL is still available in `data.downloaded[].url`. |
 | `INVALID_PAYMENT_AMOUNT` | Service returned a 402 with `amount === 0`. |
 | `PAYMENT_FAILED` | Service rejected the signed payment request. |
 
@@ -63,4 +72,5 @@ The full set of `error.code` values, grouped by exit code, is defined in [`src/e
 | Code | When |
 | ---- | ---- |
 | `INTERNAL_ERROR` | Unexpected error inside the CLI. |
-| `WALLET_ERROR` | Generic non-classified WalletConnect failure. (Exit 1 — treated as user-resolvable.) |
+
+> Note: `WALLET_ERROR` is defined alongside the timeout block in `error-codes.mjs` but its exit code is `1` (user-resolvable), so it appears under Exit 1 above.
