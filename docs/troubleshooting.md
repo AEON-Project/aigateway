@@ -165,7 +165,7 @@ The skill version is locked to `metadata.version` in the frontmatter. If you edi
 
 ```yaml
 metadata:
-  version: "0.2.4"   # was 0.2.4
+  version: "0.2.5"   # was 0.2.5
 ```
 
 Then `npx skills add AEON-Project/aigateway -g -y -f` (force) or re-run postinstall.
