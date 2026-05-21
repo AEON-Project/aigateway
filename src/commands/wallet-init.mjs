@@ -20,7 +20,7 @@ import {
   TOPUP_PRESETS,
 } from "../funding.mjs";
 import { emitOk, logInfo } from "../output.mjs";
-import { claimCoupon } from "../coupon.mjs";
+import { checkCouponStatus, claimCoupon } from "../coupon.mjs";
 
 export async function initWallet(opts) {
   const config = loadConfig();
@@ -94,23 +94,52 @@ export async function initWallet(opts) {
   // device id 在首次 init 时生成,后续 claim / 审计复用
   const deviceId = getOrCreateDeviceId();
 
-  // AEON x BNB Chain AI Agent Campaign — wallet 新建时尝试领取一次优惠券 token
-  // 已领过 / 名额满 / 服务端不通 → 安静失败,不阻塞 wallet-init 主流程
+  // AEON x BNB Chain AI Agent Campaign — 两步同步流程:
+  //   1) status check:已领 → 跳过,直接走后续流程
+  //   2) 未领 → 输出"申请中..." → claim 同步阻塞 → 输出 mint 结果
+  // 任何网络异常都安静 log,不阻塞 wallet-init 主流程。
   let coupon = null;
-  if (created) {
-    const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-    coupon = await claimCoupon({
-      serviceUrl,
-      userAddress: config.address,
-      deviceId,
-      appId,
-    });
-    if (coupon?.ok) {
-      logInfo(`🎁 Claimed ${coupon.tokenAmount} coupon credits (tx: ${coupon.txHash})`);
-    } else if (coupon?.code === "ALREADY_CLAIMED") {
-      logInfo("Coupon already claimed before.");
-    } else if (coupon?.code) {
-      logInfo(`Coupon claim skipped: ${coupon.code} — ${coupon.errorMsg || ""}`);
+  const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+  if (serviceUrl && config.address) {
+    const status = await checkCouponStatus({ serviceUrl, userAddress: config.address });
+    if (status.ok && status.claimed) {
+      // 已领过 → 直接走后续流程
+      logInfo(`Coupon already claimed (status=${status.mintStatus}${status.mintTxHash ? ", tx=" + status.mintTxHash : ""}).`);
+      coupon = {
+        ok: status.mintStatus === "SUCCESS",
+        code: status.mintStatus === "SUCCESS" ? "ALREADY_CLAIMED_SUCCESS" : "ALREADY_CLAIMED_" + status.mintStatus,
+        tokenAddress: status.tokenAddress,
+        tokenAmount: status.tokenAmount,
+        txHash: status.mintTxHash,
+        campaignId: status.campaignId,
+      };
+    } else if (status.ok && !status.claimed) {
+      // 未领 → 申请,同步阻塞
+      logInfo("🎁 Claiming AEON x BNB campaign coupon, please wait...");
+      coupon = await claimCoupon({
+        serviceUrl,
+        userAddress: config.address,
+        deviceId,
+        appId,
+      });
+      if (coupon?.ok) {
+        logInfo(`✅ Coupon claimed: ${coupon.tokenAmount} credits (tx: ${coupon.txHash})`);
+      } else if (coupon?.code === "ALREADY_CLAIMED") {
+        // status 和 claim 之间有人抢着领过(罕见 race),按已领处理
+        logInfo("Coupon already claimed (race with status check).");
+      } else if (coupon?.code === "CAMPAIGN_QUOTA_EXHAUSTED") {
+        logInfo("⚠️ Coupon campaign quota exhausted.");
+      } else if (coupon?.code === "MINT_FAILED") {
+        logInfo(`❌ Coupon mint failed: ${coupon.errorMsg}`);
+      } else if (coupon?.code === "CLAIM_NETWORK_ERROR") {
+        logInfo(`Coupon claim network error: ${coupon.errorMsg}`);
+      } else if (coupon?.code) {
+        logInfo(`Coupon claim skipped: ${coupon.code} — ${coupon.errorMsg || ""}`);
+      }
+    } else {
+      // status check 自己网络失败 — 静默,不阻塞 wallet-init
+      logInfo(`Coupon status check unreachable: ${status.errorMsg}`);
+      coupon = { ok: false, code: status.code, errorMsg: status.errorMsg };
     }
   }
 

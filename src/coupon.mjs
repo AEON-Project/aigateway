@@ -1,16 +1,62 @@
 /**
  * Coupon client — AEON x BNB Chain AI Agent Campaign.
  *
- * 调用服务端 POST /open/api/coupon/claim 申请优惠券 token。
- * 返回归一化结构:
- *   { ok: true,  code: "SUCCESS",       tokenAmount, tokenAddress, txHash, campaignId }
- *   { ok: false, code: "ALREADY_CLAIMED" | "CAMPAIGN_QUOTA_EXHAUSTED" | "MINT_FAILED" | ...,
- *     errorMsg, status? }
+ * 两步流程:
+ *   1) checkCouponStatus(...) — GET /open/api/coupon/status → 已领过 / 未领
+ *   2) 仅未领时调用 claimCoupon(...) — POST /open/api/coupon/claim → 同步 mint 结果
  *
- * 错误吞掉(网络/超时/任何异常)返回 { ok: false, code: "CLAIM_NETWORK_ERROR", errorMsg },
- * 让调用方(wallet-init)继续主流程,不要因为优惠券领取失败阻塞钱包初始化。
+ * 返回归一化结构:
+ *   checkCouponStatus:
+ *     { ok: true, claimed: true, mintStatus, mintTxHash, tokenAddress, tokenAmount, campaignId, claimedAt }
+ *     { ok: true, claimed: false, campaignId }
+ *     { ok: false, code: "STATUS_NETWORK_ERROR", errorMsg }
+ *
+ *   claimCoupon:
+ *     { ok: true,  code: "SUCCESS", tokenAmount, tokenAddress, txHash, campaignId }
+ *     { ok: false, code: "ALREADY_CLAIMED" | "CAMPAIGN_QUOTA_EXHAUSTED" | "MINT_FAILED" | ...,
+ *       errorMsg, status? }
+ *     { ok: false, code: "CLAIM_NETWORK_ERROR", errorMsg }
+ *
+ * 网络层错误吞掉,让调用方决定是否阻塞主流程。
  */
 import axios from "axios";
+
+/** 查询钱包是否已领过当前活动(不发起 mint) */
+export async function checkCouponStatus({ serviceUrl, userAddress, campaignId }) {
+  if (!serviceUrl) {
+    return { ok: false, code: "SERVICE_URL_MISSING", errorMsg: "serviceUrl is required" };
+  }
+  if (!userAddress) {
+    return { ok: false, code: "INVALID_PARAM", errorMsg: "userAddress is required" };
+  }
+  const params = new URLSearchParams({ userAddress });
+  if (campaignId) params.set("campaignId", campaignId);
+  const url = `${serviceUrl}/open/api/coupon/status?${params}`;
+
+  try {
+    const resp = await axios.get(url, { timeout: 10_000 });
+    const envelope = resp.data;
+    const result = envelope?.model || envelope?.data || envelope;
+    return {
+      ok: true,
+      claimed: !!result?.claimed,
+      campaignId: result?.campaignId,
+      mintStatus: result?.mintStatus || null,
+      mintTxHash: result?.mintTxHash || null,
+      tokenAddress: result?.tokenAddress || null,
+      tokenAmount: result?.tokenAmount ?? null,
+      errorMsg: result?.errorMsg || null,
+      claimedAt: result?.claimedAt || null,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      code: "STATUS_NETWORK_ERROR",
+      errorMsg: e.message,
+      status: e.response?.status,
+    };
+  }
+}
 
 export async function claimCoupon({ serviceUrl, userAddress, deviceId, appId, campaignId }) {
   if (!serviceUrl) {
@@ -30,7 +76,7 @@ export async function claimCoupon({ serviceUrl, userAddress, deviceId, appId, ca
 
   try {
     const resp = await axios.post(url, body, {
-      timeout: 60_000,
+      timeout: 15_000,
       headers: { "Content-Type": "application/json" },
     });
     // 服务端约定:HTTP 200 + APIResponse 包装 + data 字段 = CouponClaimResult
