@@ -127,7 +127,10 @@ sb
 
 sb
   .command("tools")
-  .description("Fetch and display the AI tool catalog from the server (no caching, always live)")
+  .description("Fetch and display the AI tool catalog (with optional filters)")
+  .option("--model <id>", "Return only this model (+effectiveSchema)")
+  .option("--category <key>", "Return only this category (image / video / tts / etc.)")
+  .option("--tier <tier>", "Filter models by tier (price | quality | balanced)")
   .action(async (opts) => {
     const { sbTools } = await import("../src/commands/sb-tools.mjs");
     return sbTools(opts);

@@ -25,6 +25,7 @@ export const ERROR_CODES = {
   INVALID_INPUTS:         { exit: 1, message: "Inputs failed schema validation." },
   INPUTS_FILE_NOT_FOUND:  { exit: 1, message: "Inputs file (passed via --inputs @path) not found." },
   INVALID_MODEL_ID:       { exit: 1, message: "Server rejected the model id." },
+  CATEGORY_NOT_FOUND:     { exit: 1, message: "Category not found in catalog." },
   MODEL_PRICING_NOT_CONFIGURED: { exit: 1, message: "This model is not yet priced on the gateway. Ask the operator to add it to skillboss-pricing.json." },
   INVALID_BODY:           { exit: 1, message: "Server rejected the request body." },
   TOPUP_REQUIRED:         { exit: 1, message: "Wallet top-up required. Choose an amount and rerun with --topup-amount <usdt>." },

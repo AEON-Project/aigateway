@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.2.0"
+  version: "0.2.2"
   author: AEON-Project
   openclaw:
     requires:
@@ -49,13 +49,29 @@ compatibility: 需要 Node.js >= 25 和 npm
 
 完整工具索引（每个 `category` 含 `agentTrigger` / `defaultInputsSchema`；每个 `model` 含 `id` / `useCase` / `tier` / 可选 `inputsOverride`）由服务端集中维护，每次实时拉取。**无本地缓存** —— 服务端是 single source of truth，model 新增 / schema 改动立即生效。
 
-**Agent 在 Phase 3.2 选 model 时**：
+**Agent 在 Phase 3.2 选 model 时**，**优先用 CLI 自带的过滤参数**，避免自己写代码解析 list：
 
 ```bash
-aigateway sb tools     # 调服务端 → stdout 输出 envelope，data 字段即完整 catalog JSON
+# 推荐：CLI 端过滤，直接拿你要的
+aigateway sb tools --model replicate/black-forest-labs/flux-schnell   # 单 model + effectiveSchema
+aigateway sb tools --category image                                   # 单类别（含所有 models 与 defaultInputsSchema）
+aigateway sb tools --category image --tier price                      # 按 tier 过滤
+aigateway sb tools --tier quality                                     # 所有类别中 quality 档
+
+# 备选：全量 catalog（少用，主要用于探索）
+aigateway sb tools
 ```
 
-把 stdout JSON parse 出来，按 `data.categories[].models[]` 挑 model。每次都从服务端实时获取，无本地缓存。
+**如果必须自己解析**（jq 推荐）：
+
+```bash
+aigateway sb tools | jq '.data.categories[] | select(.key=="image") | .models[]'
+aigateway sb tools | jq '.data.categories[].models[] | select(.id=="<model_id>")'
+```
+
+⚠️ **不要在 Python list 上调 `.find()`** —— list 没有这个方法。用 `next(m for m in ...)` 或 dict 索引化。但通常**根本不需要**自己解析，用 `aigateway sb tools --model X` 就够了。
+
+每次都从服务端实时获取，无本地缓存。
 
 价格不在 catalog 里：x402 第一阶段（402 响应）会实时返回本次调用的 USDT 金额，CLI 自动展示给用户。
 
@@ -236,16 +252,58 @@ Approve:   {approveTx truncated or "already approved"}
 
 > 同一意图可能落到多个类别（如"做个含图的演示" = `image` + `ui_generation`），按用户**主诉求**选最匹配的一类先做。
 
-### 3.2 选择模型挑选策略
+### 3.2 列出候选 model，等用户挑
 
-按用户偏好挑 `model_id`（`price` / `quality` / `balanced` 三档策略）：
+⭐ **默认模式**：**AI 不擅自选 model**，而是把候选 + 价格列给用户，让用户拍板。**推荐默认选最便宜的**（按 `tier: "price"` 优先排序）。
 
-| 用户表达偏好 | 策略 |
+**例外**：用户原话已经指定了 model（`"用 flux-2-max 画"`） → 直接用，跳过列表。
+
+#### 候选展示模板（按字面渲染）
+
+跑 `aigateway sb tools --category <key>` 拿到该类所有 model，**按 tier 排序**（price → balanced → quality）后用以下模板渲染：
+
+```
+✨ 可用 model（{category 中文名}）
+
+  #  Model ID                                         价格           档位
+  1  {model_id}                                       ${price}{unit} ← 推荐
+  2  {model_id}                                       ${price}{unit}
+  3  {model_id}                                       ${price}{unit}
+  ...
+
+直接回车或输入 1 用推荐项；或输入序号 / 完整 model_id 选其它。
+```
+
+**字段规则**：
+- 第 1 行**永远**是 tier=`price` 档（最便宜），并加 `← 推荐` 后缀
+- `${price}` 取 catalog 中 `model.price`（USD 数值，保留小数）
+- `{unit}` 按 category 推断（见下表）
+- 用户只输序号 `2` / 完整 `model_id` / 直接回车 都接受
+- 用户没回应 → 用 #1（推荐项）
+
+#### Category → 价格单位映射
+
+| Category | 价格单位 `{unit}` |
 | --- | --- |
-| "用便宜的 / 快速试一下" | 选**最便宜**的 model（如 image 选 `flux-schnell`、search 选 `tavily/search`） |
-| "用最好的 / 高质量" | 选该类**旗舰** model（如 image 选 `flux-2-max`、video 选 `seedance/seedance-2.0`） |
-| 没说偏好（默认） | 选**平衡**款（如 image 默认 `flux-schnell`、search 默认 `perplexity/search`） |
-| 用户直接指定 model | **直接用**，跳过挑选 |
+| `image` | `/张` |
+| `video` | `/秒` |
+| `tts` | `/1K 字符` |
+| `stt` | `/分钟` |
+| `embeddings` | `/M tokens` |
+| `search` / `scraper` / `social_data` / `email` / `sms` / `document` / `ui_generation` / `financial` / `news` / `geolocation` / `utility` / `apify` | `/次` |
+
+> 价格是**预估单价**，**最终金额**以 x402 第一阶段（402 响应）的实时数据为准（CLI 会在调用后展示 `💰 Charged`）。
+
+#### 用户偏好覆盖
+
+| 用户原话 | AI 动作 |
+| --- | --- |
+| （无偏好）"画一只猫" | 列候选 → 等用户选 → 用户选完才调 `sb invoke` |
+| "用便宜的画一只猫" | 直接用候选 #1（最便宜），跳过等待 |
+| "用最好的画一只猫" | 直接用 `tier: "quality"` 档第一个，跳过等待 |
+| "用 flux-2-max 画一只猫" | 直接用 `flux-2-max`，**完全跳过候选展示** |
+| 用户输入序号 (e.g. "2") | 用候选列表第 2 行的 model |
+| 用户输入完整 model_id | 用该 model_id |
 
 **查询 model 清单**：跑 `aigateway sb tools` 拿到完整 catalog，从 stdout envelope 的 `data.categories[].models[]` 中按 `tier` 挑 `model_id`。
 
@@ -531,6 +589,9 @@ aigateway clean                                    # 卸载 skill、清缓存
 | Phase 2 第一行 | `> Topping up wallet...` |
 | Phase 2 成功 header | `✅ Wallet prepared` |
 | Phase 4.1 sb invoke 第一行 | `> Invoking {model_id}...` |
+| Phase 3.2 候选列表 header | `✨ 可用 model（{category 中文名}）` |
+| Phase 3.2 推荐项后缀 | `← 推荐` |
+| Phase 3.2 候选行格式 | `{#}  {model_id}  ${price}{unit}` |
 | Phase 5.2 通用成功 header | `✅ Done` |
 | Phase 5.2 Powered 行 | `🧩 Powered by Skillboss · {model_id}` |
 | Phase 5.2 Path 行 | `📁 Path        {localPath}` |
