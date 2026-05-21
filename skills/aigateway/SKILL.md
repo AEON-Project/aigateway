@@ -256,7 +256,10 @@ Approve:   {approveTx truncated or "already approved"}
 
 ⭐ **默认模式**：**AI 不擅自选 model**，而是把候选 + 预估总价列给用户，让用户拍板。**推荐默认选最便宜的**（按 `tier: "price"` 优先排序）。
 
-**例外**：用户原话已经指定了 model（`"用 flux-2-max 画"`） → 直接用，跳过列表。
+**跳过候选展示的场景**（任一命中即跳过）：
+
+1. 用户原话已经指定了 model（`"用 flux-2-max 画"`） → 直接用
+2. **任务匹配后候选只剩 1 个 model** → 直接用该 model，不要再渲染单行"列表"和"输入序号"引导。若 `priceUnit` 需要用量字段（`per_second` / `per_minute`），只问用量；其它直接调用。用一行 `✨ 选用 {model_id}（${unitPrice}{unit-cn} × {quantity} = ${total} USDT），开始生成…` 替代候选表格。
 
 #### Step A: 看 `priceUnit` 决定是否前置询问用量
 
