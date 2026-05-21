@@ -4,6 +4,26 @@
 >
 > **Zero API keys · Zero prepay · x402 protocol pay-per-call · Natural-language driven**
 
+---
+
+## 🚀 AEON x BNB Chain: AI Agent Campaign
+
+> **Your AI agent is ready to work — now let it pay.**
+
+AEON and **BNB Chain** are launching the **AI Agent Campaign**, opening up a native payment rail for autonomous AI agents on BNB Chain. With BNB assets, your agent can now call LLMs, APIs, skills, and compute resources — and settle instantly on-chain.
+
+**How it works**
+
+Agents pay with BNB-native assets through AEON's infrastructure. Every API call, every model inference, every skill invocation — settled seamlessly, no human in the loop.
+
+**🎁 First 1,000 users get $5 USDT in free credits** to start using AEON Skills and experience what agentic commerce actually feels like.
+
+Build agents that don't just think — but **transact**.
+
+→ **[Claim your $5 free credits (Google Form)](https://docs.google.com/forms/d/e/1FAIpQLSe8WF6-Y8Sh2AEC_hEGScyl_gQRahPYWPMDewdXJlfeVENENg/viewform?usp=publish-editor)** · Deploy your agent. Let it run.
+
+---
+
 `@aeon-ai-pay/aigateway` is a unified CLI + Agent Skill. Through a single session-key wallet and the [x402 protocol](https://www.x402.org/), it opens up SkillBoss's 200+ tool capabilities (image / video / audio / search / scraping / email / document / social data / UI generation, etc.) to AI Agents for pay-per-call invocation.
 
 ---
