@@ -66,15 +66,22 @@ export function createX402Api(privateKey) {
 /**
  * Send the first x402 request (unsigned) and extract the real payment requirements
  * from the 402 response.
- * Also keeps the raw 402 response and the original request config so the caller can
- * sign manually later.
+ *
+ * 服务端可能返回多个 accepts (USDT + BNA 活动代币), 客户端按钱包余额自主选币种 -
+ * 优先扣 BNA (CAMPAIGN_TOKEN_ADDRESS), 余额不足回退到 USDT. 由 caller (sb-invoke)
+ * 调用 selectAcceptByBalance() 完成选择.
+ *
  * Field names follow the x402 v2 PaymentRequirements standard: asset, payTo, amount.
  *
  * Supports both GET and POST entry points.
  *
  * @param {string} url
  * @param {{ method?: "GET"|"POST", data?: any, headers?: object }} [options]
- * @returns {Promise<{amountUsdt: number, amountWei: string, decimals: number, asset: string, payTo: string, orderNo: string|null, raw402Response: object, requestConfig: object}>}
+ * @returns {Promise<{
+ *   accepts: Array<{ amountUsdt: number, amountWei: string, decimals: number, asset: string, payTo: string }>,
+ *   amountUsdt: number, amountWei: string, decimals: number, asset: string, payTo: string,
+ *   orderNo: string|null, raw402Response: object, requestConfig: object
+ * }>} 同时返回 accepts 列表 (新接口) 和首个 accept 的字段 (向后兼容)
  */
 export async function fetchPaymentRequirements(url, options = {}) {
   const rawClient = axios.create();
@@ -89,22 +96,61 @@ export async function fetchPaymentRequirements(url, options = {}) {
   } catch (err) {
     if (err.response?.status !== 402) throw err;
     const data = err.response.data;
-    const accept = data?.accepts?.[0];
-    if (!accept) throw new Error("No payment requirements in 402 response");
-    const decimals = accept.tokenDecimals || 18;
-    const amountWei = BigInt(accept.amount);
-    const amountUsdt = parseFloat(formatUnits(amountWei, decimals));
+    const rawAccepts = Array.isArray(data?.accepts) ? data.accepts : [];
+    if (rawAccepts.length === 0) throw new Error("No payment requirements in 402 response");
+    const accepts = rawAccepts.map((a) => {
+      const decimals = a.tokenDecimals || 18;
+      const amountWei = BigInt(a.amount);
+      return {
+        amountUsdt: parseFloat(formatUnits(amountWei, decimals)),
+        amountWei: amountWei.toString(),
+        decimals,
+        asset: a.asset,
+        payTo: a.payTo,
+        raw: a,
+      };
+    });
+    const first = accepts[0];
     return {
-      amountUsdt,
-      amountWei: amountWei.toString(),
-      decimals,
-      asset: accept.asset,
-      payTo: accept.payTo,
+      accepts,
+      amountUsdt: first.amountUsdt,
+      amountWei: first.amountWei,
+      decimals: first.decimals,
+      asset: first.asset,
+      payTo: first.payTo,
       orderNo: data.orderNo || null,
       raw402Response: err.response,
       requestConfig: err.config,
     };
   }
+}
+
+/**
+ * 根据钱包余额从 accepts 列表选币种.
+ * 规则: 优先扣 BNA 活动代币 (preferredAsset, 通常为 CAMPAIGN_TOKEN_ADDRESS),
+ *       若 BNA 余额 < 该币种 required → 回退到 fallbackAsset (USDT).
+ * 若 accepts 只有一个选项 → 直接返回该选项.
+ *
+ * @param {Array<{asset:string, amountUsdt:number, amountWei:string, ...}>} accepts
+ * @param {{usdt: bigint, token: bigint}} balances - 钱包余额 (wei)
+ * @param {{preferredAsset: string, fallbackAsset: string}} prefs
+ * @returns {{ chosen: object, reason: "preferred"|"fallback"|"only-one" }}
+ */
+export function selectAcceptByBalance(accepts, balances, prefs) {
+  if (accepts.length === 1) return { chosen: accepts[0], reason: "only-one" };
+  const preferLower = String(prefs.preferredAsset || "").toLowerCase();
+  const fallbackLower = String(prefs.fallbackAsset || "").toLowerCase();
+  const preferred = accepts.find((a) => String(a.asset).toLowerCase() === preferLower);
+  const fallback = accepts.find((a) => String(a.asset).toLowerCase() === fallbackLower);
+  if (preferred) {
+    const needWei = BigInt(preferred.amountWei);
+    if (balances.token >= needWei) {
+      return { chosen: preferred, reason: "preferred" };
+    }
+  }
+  if (fallback) return { chosen: fallback, reason: "fallback" };
+  // accepts 含有未知 asset, 兜底取第一个
+  return { chosen: accepts[0], reason: "fallback" };
 }
 
 /**

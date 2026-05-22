@@ -69,13 +69,41 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "appId": "TEST000001",
   "address": "0x...",
   "initialUsdt": "0",
-  "usdt": "5",
+  "usdt": "1.0",
+  "token": "5.0",
+  "totalU": "6.0",
   "bnb": "0.0003",
   "allowance": "115792...max",
-  "topup": "5" | null,
+  "topup": {
+    "displayAmount": "6",
+    "actualPay": "1",
+    "coupon": 5
+  } | null,
+  "coupon": {
+    "claimed": true,
+    "campaignId": "AEON_BNB_2026Q2",
+    "tokenAddress": "0x2c9E7Ff908Abde7Ca6dfA0BFF296d8982Ae7Ad4b",
+    "tokenAmount": "5",
+    "txHash": "0x..."
+  } | {
+    "claimed": false,
+    "campaignId": "AEON_BNB_2026Q2",
+    "code": "CAMPAIGN_QUOTA_EXHAUSTED",
+    "errorMsg": "..."
+  } | null,
   "approveTx": "0x..." | null
 }
 ```
+
+- **`topup`** 描述本次操作:
+  - `displayAmount` = 用户/产品视角的套餐金额 (U).
+  - `actualPay` = 实际链上转出的 USDT (优惠模式 = displayAmount − coupon, 否则 = displayAmount).
+  - `coupon` = 本次优惠抵扣的 U 数 (固定 5; 普通模式为 0).
+- **`coupon`** 描述活动 token 领取结果. 仅在「未领取 + 完成转账」分支非 null:
+  - `claimed: true` → 服务端 mint 成功, agent 应给用户感谢/赠送文案.
+  - `claimed: false` → 充值 USDT 已到账但 token 未领到 (运营兜底, 客户端不退款).
+  - `null` → 本次未走优惠流程 (普通充值 / 已领过 / 服务端不可达).
+- **`totalU`** = `usdt + token`, 用户视角下的总资产 (token 与 USDT 1:1 等价 U).
 
 ### `sb invoke`
 
@@ -97,10 +125,16 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   ],
   "raw": { /* upstream vendor response, unwrapped from { payer, transaction, data } */ },
   "paymentResponse": { "txHash": "0x...", "payer": "0x...", "...": "..." },
+  "paymentMethod": "USDT" | "COUPON",
+  "paymentToken": "0x55d398...USDT" | "0x2c9E7Ff...coupon",
   "balance": {
-    "initial": "5.0",
-    "before": "5.0",
-    "after": "4.99",
+    "initial": "1.0",
+    "before": "1.0",
+    "after": "1.0",
+    "tokenInitial": "5.0",
+    "tokenBefore": "5.0",
+    "tokenAfter": "4.99",
+    "totalUAfter": "5.99",
     "charged": 0.01,
     "topup": null | "5"
   }
@@ -109,7 +143,8 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
 
 - **Binary outputs** (image / video / audio) populate `downloaded[]`. With `--raw` the auto-download is skipped and `downloaded[]` stays empty; the URLs live in `raw`.
 - **JSON-only outputs** (search, scraper, social_data, email, etc.) leave `downloaded` empty; consumers read `raw`.
-- `balance.charged` is the live USDT amount taken for this call (computed server-side as `priceUnit × inputs usage`).
+- `balance.charged` is the live U amount taken for this call (computed server-side as `priceUnit × inputs usage`).
+- `paymentMethod` 由服务端 402 响应的 `asset` 决定 (`COUPON` 即扣 token, `USDT` 即扣 USDT). 客户端按对应余额校验; token 不足报 `INSUFFICIENT_TOKEN`, 重试时服务端可能回退到 USDT.
 
 Failure shapes carry extra fields per code, e.g.:
 
@@ -149,12 +184,17 @@ Failure shapes carry extra fields per code, e.g.:
 {
   "mode": "private-key",
   "address": "0x...",
-  "usdt": "12.34",
+  "usdt": "1.0",
+  "token": "5.0",
+  "totalU": "6.0",
   "bnb": "0.0003",
   "network": "BSC Mainnet (Chain ID: 56)",
   "mainWallet": { "address": "0x...", "usdt": "..." }
 }
 ```
+
+- `token` = 优惠活动代币余额 (`CAMPAIGN_TOKEN_ADDRESS`).
+- `totalU` = `usdt + token`, 用户视角下的总资产 (token 与 USDT 1:1 等价 U).
 
 ### `wallet-gas`
 

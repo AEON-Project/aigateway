@@ -36,6 +36,12 @@ export const LOW_BALANCE_THRESHOLD = 1;
 export const MIN_TOPUP_USDT = 5;
 export const TOPUP_PRESETS = [6, 10, 20, 50];
 export const AUTO_GAS_BNB = "0.0003";
+/**
+ * 活动优惠抵扣金额 (U). 客户端 hardcode, 与服务端 campaign 配置同步:
+ * 用户充值任意预设套餐时, 实付 = 套餐金额 - COUPON_AMOUNT_USDT (≥ 1).
+ * 服务端 claim 成功后 mint 等额 token 到 session key.
+ */
+export const COUPON_AMOUNT_USDT = 5;
 
 const ERC20_APPROVE_ABI = [
   {
@@ -56,17 +62,30 @@ const ERC20_APPROVE_ABI = [
  *
  * @param {number} minTopup - floor amount in USDT (typically MIN_TOPUP_USDT, but
  *   may be higher when shortfall > 5)
- * @returns {Promise<string>} chosen USDT amount as a numeric string
+ * @param {object} [opts]
+ * @param {boolean} [opts.couponMode] - 若为 true 则展示「优惠后实付」金额
+ * @param {number}  [opts.couponAmount] - 优惠抵扣金额 (固定 5 U), 仅 couponMode 生效
+ * @returns {Promise<string>} chosen display amount as a numeric string (套餐金额, 非实付)
  */
-export async function promptTopupAmount(minTopup) {
+export async function promptTopupAmount(minTopup, opts = {}) {
+  const couponMode = opts.couponMode === true;
+  const couponAmount = Number(opts.couponAmount) || 0;
   const presets = TOPUP_PRESETS.filter((v) => v >= minTopup);
   const customIdx = presets.length + 1;
 
   logInfo("");
-  logInfo(`Choose top-up amount (minimum ${minTopup} USDT):`);
-  presets.forEach((v, i) => {
-    logInfo(`  ${i + 1}) ${v} USDT`);
-  });
+  if (couponMode) {
+    logInfo(`🎁 Coupon active: ${couponAmount} U auto-applied. Choose package:`);
+    presets.forEach((v, i) => {
+      const actual = Math.max(0, v - couponAmount);
+      logInfo(`  ${i + 1}) ${v} U package (coupon -${couponAmount} U, you pay ${actual} USDT)`);
+    });
+  } else {
+    logInfo(`Choose top-up amount (minimum ${minTopup} USDT):`);
+    presets.forEach((v, i) => {
+      logInfo(`  ${i + 1}) ${v} USDT`);
+    });
+  }
   logInfo(`  ${customIdx}) Custom amount`);
 
   const rl = createInterface({ input: process.stdin, output: process.stderr });
@@ -78,14 +97,17 @@ export async function promptTopupAmount(minTopup) {
         return String(presets[n - 1]);
       }
       if (Number.isInteger(n) && n === customIdx) {
-        const custom = (await rl.question(`Enter USDT amount (>= ${minTopup}): `)).trim();
+        const prompt = couponMode
+          ? `Enter package amount in U (>= ${minTopup}, you'll pay amount - ${couponAmount}): `
+          : `Enter USDT amount (>= ${minTopup}): `;
+        const custom = (await rl.question(prompt)).trim();
         const cn = Number(custom);
         if (!Number.isFinite(cn) || cn <= 0) {
           logInfo("Invalid amount, please retry.");
           continue;
         }
         if (cn < minTopup) {
-          logInfo(`Amount must be at least ${minTopup} USDT.`);
+          logInfo(`Amount must be at least ${minTopup}${couponMode ? " U" : " USDT"}.`);
           continue;
         }
         return custom;
@@ -105,12 +127,23 @@ export async function promptTopupAmount(minTopup) {
  * @param {string} params.sessionAddress - destination (local session key)
  * @param {string|null} params.usdtAmount - USDT amount to transfer, or null to skip
  * @param {boolean} params.needGas - whether to also transfer 0.0003 BNB for approve gas
+ * @param {string|null} [params.displayAmount] - 套餐原价 (优惠模式); 与 usdtAmount 不同时 QR 页面显示划线原价 + Reward 徽章
+ * @param {number}      [params.couponAmount]  - 优惠抵扣额 (优惠模式), 用于徽章文案
  */
-export async function fundSessionKey({ sessionAddress, usdtAmount, needGas }) {
+export async function fundSessionKey({ sessionAddress, usdtAmount, needGas, displayAmount = null, couponAmount = 0 }) {
   const pageAmount = usdtAmount || (needGas ? AUTO_GAS_BNB : null);
   const pageToken = usdtAmount ? "USDT" : "BNB";
   const pageGasAmount = (needGas && usdtAmount) ? AUTO_GAS_BNB : null;
-  await withWallet({ amount: pageAmount, token: pageToken, gasAmount: pageGasAmount }, async ({ signClient, session, peerAddress }) => {
+  // 优惠模式仅当: 存在 USDT 转账 + displayAmount 与实付 amount 不同 + couponAmount > 0
+  const isCoupon = usdtAmount != null && displayAmount != null
+    && String(displayAmount) !== String(usdtAmount) && couponAmount > 0;
+  await withWallet({
+    amount: pageAmount,
+    token: pageToken,
+    gasAmount: pageGasAmount,
+    originalAmount: isCoupon ? displayAmount : null,
+    couponAmount: isCoupon ? couponAmount : 0,
+  }, async ({ signClient, session, peerAddress }) => {
     const publicClient = createPublicClient({
       chain: bsc,
       transport: http(BSC_RPC_URL, { timeout: 15000, retryCount: 2 }),

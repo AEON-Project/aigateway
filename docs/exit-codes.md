@@ -23,6 +23,7 @@ The full set of `error.code` values is defined in [`src/error-codes.mjs`](../src
 | `AMOUNT_INVALID` | Amount could not be parsed (e.g. `wallet-topup --amount`, `--topup-amount`). |
 | `AMOUNT_EXCEEDS_BALANCE` | `wallet-withdraw --amount` exceeds available USDT. |
 | `INSUFFICIENT_USDT` | USDT balance still insufficient after funding. |
+| `INSUFFICIENT_TOKEN` | Coupon token balance < required (server requested token but balance is short). Retry — server will fall back to USDT on next 402. |
 | `INSUFFICIENT_BNB` | No BNB for approve / withdraw gas. |
 | `NO_FUNDS` | Session wallet has zero USDT and zero BNB (withdraw context). |
 | `NO_MAIN_WALLET` | `wallet-withdraw` invoked without `--to` and no `mainWallet` in config. |

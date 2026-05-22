@@ -4,13 +4,37 @@
  */
 import { SignClient } from "@walletconnect/sign-client";
 import { encodeFunctionData, parseUnits } from "viem";
-import { writeFileSync } from "fs";
-import { join } from "path";
+import { writeFileSync, readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { tmpdir } from "os";
 import { execSync } from "child_process";
 import { createServer } from "http";
 import { WC_CONNECT_TIMEOUT_MS, ERC20_TRANSFER_ABI, DEFAULT_WC_PROJECT_ID } from "./constants.mjs";
 import { loadConfig, saveConfig } from "./config.mjs";
+
+// QR 页面图片资源 (随 npm 包发布, 见 package.json files)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const _loadDataUrl = (name) =>
+  "data:image/png;base64," + readFileSync(join(__dirname, "assets", name)).toString("base64");
+const COUPON_BADGE_DATA_URL = _loadDataUrl("coupon-badge.png");
+const USDT_ICON_DATA_URL = _loadDataUrl("usdt.png");
+const BNB_ICON_DATA_URL = _loadDataUrl("bnb.png");
+
+// SF Pro Display 字体 (5 个权重, woff2, 内联避免 file:// 加载延迟)
+const _loadFontB64 = (file) =>
+  readFileSync(join(__dirname, "assets", "fonts", file)).toString("base64");
+const FONT_FACE_CSS = [
+  { w: 300, f: "sf-pro-display_light_300.woff2" },
+  { w: 400, f: "sf-pro-display_regular_400.woff2" },
+  { w: 500, f: "sf-pro-display_medium_500.woff2" },
+  { w: 600, f: "sf-pro-display_semibold_600.woff2" },
+  { w: 700, f: "sf-pro-display_bold_700.woff2" },
+]
+  .map(({ w, f }) =>
+    `@font-face { font-family: 'SF Pro Display'; font-style: normal; font-weight: ${w}; font-display: swap; src: url(data:font/woff2;base64,${_loadFontB64(f)}) format('woff2'); }`,
+  )
+  .join("\n");
 
 /**
  * Error type thrown by the WalletConnect flow, carrying a stable error code
@@ -74,19 +98,22 @@ const QR_EXPIRE_MS = 5 * 60 * 1000;
  * @param {string} uri - WalletConnect URI
  * @param {number} statusPort - port of the local status server
  * @param {string|null} amount - USDT amount the user has to pay (e.g. "0.66")
+ * @param {string|null} [originalAmount] - 套餐原价 (优惠模式生效); 与 amount 不同时显示划线原价 + Reward 徽章
+ * @param {number}      [couponAmount]   - 优惠抵扣额, 用于徽章 "N Off" 文案 (优惠模式生效)
  */
-function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB Chain(BEP20) only", gasAmount = null) {
+function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB Chain(BEP20) only", gasAmount = null, originalAmount = null, couponAmount = 0) {
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>AEON — Wallet Connect</title>
 <style>
+  ${FONT_FACE_CSS}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     min-height: 100vh; display: flex; flex-direction: column; align-items: center;
     justify-content: flex-start; padding-top: 40px;
     background: #f7f7f7; color: #191b1f;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
-  .logo { margin-bottom: 24px; }
+  .logo { margin-bottom: 28px; }
   .outer {
     width: 375px; min-height: 468px; border-radius: 16px; border: 1px solid #DBDEE3;
     background: #F7F7F7; padding: 16px;
@@ -97,13 +124,20 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     flex: 1;
   }
-  .title { font-size: 18px; font-weight: 700; color: #191b1f; margin-bottom: 16px; line-height: 1.4; }
+  .title { font-size: 18px; font-weight: 700; color: #191b1f; margin-bottom: 16px; line-height: 1.2; }
   .info-card { width: 100%; border-radius: 8px; background: #f4f5f5; margin-bottom: 16px; overflow: hidden; }
-  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; min-height: 48px; }
   .info-row + .info-row { border-top: 1px solid #e5e7eb; }
   .info-label { font-size: 14px; font-weight: 400; color: #737a86; }
   .info-value { font-size: 14px; font-weight: 600; color: #191b1f; display: flex; align-items: center; gap: 6px; }
   .info-value.green { color: #00b42a; }
+  .info-value.blue { color: #1972f6; font-weight: 700; }
+  .info-value.orange { color: #ff5500; font-weight: 700; }
+  .info-value.stacked { flex-direction: column; align-items: flex-end; gap: 0px; }
+  .amount-line { display: flex; align-items: center; gap: 6px; }
+  .amount-strike { color: #b8b8b8; text-decoration: line-through; font-weight: 400; font-size: 14px; }
+  .amount-bold { color: #ff5500; font-weight: 700; font-size: 14px; }
+  .reward-badge-img { height: 20px; display: block; }
   .usdt-icon { width: 18px; height: 18px; flex-shrink: 0; }
   .timer { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 14px; font-weight: 400; color: #737a86; margin-top: 8px; margin-bottom: 16px; }
   .timer svg { flex-shrink: 0; }
@@ -159,6 +193,11 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
 <script>
   const URI = ${JSON.stringify(uri)};
   const AMOUNT = ${JSON.stringify(amount || null)};
+  const ORIGINAL_AMOUNT = ${JSON.stringify(originalAmount || null)};
+  const COUPON_AMOUNT = ${JSON.stringify(couponAmount || 0)};
+  const COUPON_BADGE_URL = ${JSON.stringify(COUPON_BADGE_DATA_URL)};
+  const USDT_ICON_URL = ${JSON.stringify(USDT_ICON_DATA_URL)};
+  const BNB_ICON_URL = ${JSON.stringify(BNB_ICON_DATA_URL)};
   const TOKEN = ${JSON.stringify(token)};
   const NETWORK = ${JSON.stringify(network)};
   const GAS_AMOUNT = ${JSON.stringify(gasAmount || null)};
@@ -222,7 +261,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
   }
 
-  function fmtAmount(v) {
+  function fmtAmount(v, opts) {
     if (v == null || v === '') return '';
     // Render the full original amount (no rounding); trim trailing zeros and add thousands separators to the integer part
     const s = String(v);
@@ -231,7 +270,8 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     let [intPart, decPart] = body.split('.');
     if (decPart) decPart = decPart.replace(/0+$/, '');
     const intWithComma = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    return neg + intWithComma + (decPart ? '.' + decPart : '') + ' ' + TOKEN;
+    const noToken = opts && opts.noToken;
+    return neg + intWithComma + (decPart ? '.' + decPart : '') + (noToken ? '' : ' ' + TOKEN);
   }
 
   // ====== Page rendering helpers ======
@@ -264,17 +304,34 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     const progress = remaining / EXPIRE_MS;
     const dashOffset = -PL * (1 - progress);
 
-    // USDT icon SVG (green circle Tether glyph)
-    const USDT_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#26A17B"/><path d="M10.1 9.6c-.06 0-.33.02-.73.02-.32 0-.58-.01-.67-.02-1.32-.06-2.3-.3-2.3-.58 0-.29.98-.52 2.3-.58v.93c.09.01.36.02.68.02.38 0 .66-.01.72-.02v-.93c1.31.06 2.29.3 2.29.58 0 .28-.98.52-2.29.58zm0-.87v-.83h2.05V6.5H5.88v1.4h2.05v.83c-1.48.07-2.6.38-2.6.75 0 .37 1.12.68 2.6.75v2.69h1.07v-2.69c1.48-.07 2.59-.38 2.59-.75 0-.37-1.11-.68-2.59-.75z" fill="#fff"/></svg>';
-    // BNB icon SVG (yellow circle BNB glyph)
-    const BNB_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#F3BA2F"/><path d="M9 4.5L7.2 6.3l-1.8-1.8L9 1.2l3.6 3.3-1.8 1.8L9 4.5zm-4.5 4.5L2.7 7.2 4.5 5.4l1.8 1.8L4.5 9zm4.5 4.5l-1.8-1.8-1.8 1.8L9 16.8l3.6-3.3-1.8-1.8L9 13.5zm4.5-4.5l1.8 1.8-1.8 1.8-1.8-1.8 1.8-1.8zM10.8 9L9 7.2 7.2 9 9 10.8 10.8 9z" fill="#fff"/></svg>';
+    // USDT / BNB 图标 (PNG, 加载自 src/assets/)
+    const USDT_ICON = '<img class="usdt-icon" src="' + USDT_ICON_URL + '" alt="USDT">';
+    const BNB_ICON = '<img class="usdt-icon" src="' + BNB_ICON_URL + '" alt="BNB">';
     const TOKEN_ICON = TOKEN === 'BNB' ? BNB_ICON : USDT_ICON;
-
-    const BNB_ICON_GAS = '<svg class="usdt-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#F3BA2F"/><path d="M9 4.5L7.2 6.3l-1.8-1.8L9 1.2l3.6 3.3-1.8 1.8L9 4.5zm-4.5 4.5L2.7 7.2 4.5 5.4l1.8 1.8L4.5 9zm4.5 4.5l-1.8-1.8-1.8 1.8L9 16.8l3.6-3.3-1.8-1.8L9 13.5zm4.5-4.5l1.8 1.8-1.8 1.8-1.8-1.8 1.8-1.8zM10.8 9L9 7.2 7.2 9 9 10.8 10.8 9z" fill="#fff"/></svg>';
+    const BNB_ICON_GAS = BNB_ICON;
     const fmtGas = GAS_AMOUNT ? String(GAS_AMOUNT).replace(/0+$/, '').replace(/\\.$/, '') + ' BNB' : '';
+
+    // 优惠模式: ORIGINAL_AMOUNT (套餐原价) 与 AMOUNT (实付) 不同时, 显示划线原价 + Reward 徽章
+    const isCoupon = ORIGINAL_AMOUNT != null
+      && String(ORIGINAL_AMOUNT) !== String(AMOUNT)
+      && Number(ORIGINAL_AMOUNT) > Number(AMOUNT);
+
+    const couponBadge = isCoupon
+      ? '<img class="reward-badge-img" src="' + COUPON_BADGE_URL + '" alt="BNB Chain Reward ' + COUPON_AMOUNT + ' Off">'
+      : '';
+    const txAmountInner = isCoupon
+      ? '<div class="amount-line">' + TOKEN_ICON +
+          '<span class="amount-strike">' + fmtAmount(ORIGINAL_AMOUNT, { noToken: true }) + '</span>' +
+          '<span class="amount-bold">' + fmtAmount(AMOUNT) + '</span>' +
+        '</div>' + couponBadge
+      : TOKEN_ICON + fmtAmount(AMOUNT);
+    const txValueClass = isCoupon ? 'info-value stacked' : 'info-value green';
+
+    // Gas Amount 始终用蓝色 (设计稿 22.jpg, BSC 链色 #1972f6)
+    const gasValueClass = 'info-value blue';
     const infoCardHTML = AMOUNT ? '<div class="info-card">' +
-      '<div class="info-row"><span class="info-label">' + (GAS_AMOUNT ? 'Transaction Amount' : 'Amount') + '</span><span class="info-value green">' + TOKEN_ICON + fmtAmount(AMOUNT) + '</span></div>' +
-      (GAS_AMOUNT ? '<div class="info-row"><span class="info-label">Gas Amount</span><span class="info-value green">' + BNB_ICON_GAS + fmtGas + '</span></div>' : '') +
+      '<div class="info-row"><span class="info-label">' + (GAS_AMOUNT ? 'Transaction Amount' : 'Amount') + '</span><span class="' + txValueClass + '">' + txAmountInner + '</span></div>' +
+      (GAS_AMOUNT ? '<div class="info-row"><span class="info-label">Gas Amount</span><span class="' + gasValueClass + '">' + BNB_ICON_GAS + fmtGas + '</span></div>' : '') +
       '<div class="info-row"><span class="info-label">Network</span><span class="info-value">' + NETWORK + '</span></div>' +
       '</div>' : '';
 
@@ -492,9 +549,11 @@ export async function initSignClient(projectId) {
  * @param {SignClient} signClient
  * @param {number} statusPort
  * @param {string|null} amount - USDT amount to display (e.g. "0.66")
+ * @param {string|null} [originalAmount] - 套餐原价 (优惠模式)
+ * @param {number}      [couponAmount]   - 优惠抵扣额 (优惠模式)
  * @returns {{ session: object, peerAddress: string }}
  */
-export async function connectWallet(signClient, statusPort, amount = null, token = "USDT", gasAmount = null) {
+export async function connectWallet(signClient, statusPort, amount = null, token = "USDT", gasAmount = null, originalAmount = null, couponAmount = 0) {
   const { uri, approval } = await signClient.connect({
     optionalNamespaces: {
       eip155: {
@@ -506,7 +565,7 @@ export async function connectWallet(signClient, statusPort, amount = null, token
   });
 
   // Generate the QR-code page (with status polling) and open it in the browser
-  openQRInBrowser(uri, statusPort, amount, token, "BNB Chain(BEP20) only", gasAmount);
+  openQRInBrowser(uri, statusPort, amount, token, "BNB Chain(BEP20) only", gasAmount, originalAmount, couponAmount);
   console.error("QR code opened in browser. Scan it with your wallet app.");
   console.error("Waiting for wallet approval...");
 
@@ -617,7 +676,7 @@ const FINAL_LINGER_MS = 2000;
  * @param {(ctx: { signClient, session, peerAddress }) => Promise<void>} fn
  */
 export async function withWallet(opts, fn) {
-  const { amount = null, token = "USDT", gasAmount = null, projectId = DEFAULT_WC_PROJECT_ID } = opts;
+  const { amount = null, token = "USDT", gasAmount = null, projectId = DEFAULT_WC_PROJECT_ID, originalAmount = null, couponAmount = 0 } = opts;
   const statusPort = await startStatusServer();
   let signClient = null;
   let session = null;
@@ -626,7 +685,7 @@ export async function withWallet(opts, fn) {
   try {
     signClient = await initSignClient(projectId);
     let peerAddress;
-    ({ session, peerAddress } = await connectWallet(signClient, statusPort, amount, token, gasAmount));
+    ({ session, peerAddress } = await connectWallet(signClient, statusPort, amount, token, gasAmount, originalAmount, couponAmount));
     console.error(`Wallet connected: ${peerAddress}`);
 
     await fn({ signClient, session, peerAddress });

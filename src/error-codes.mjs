@@ -16,6 +16,7 @@ export const ERROR_CODES = {
   AMOUNT_INVALID:         { exit: 1, message: "Invalid amount." },
   AMOUNT_EXCEEDS_BALANCE: { exit: 1, message: "Requested amount exceeds available balance." },
   INSUFFICIENT_USDT:      { exit: 1, message: "Insufficient USDT balance." },
+  INSUFFICIENT_TOKEN:     { exit: 1, message: "Insufficient coupon token balance for this call. Retry — server will fall back to USDT." },
   INSUFFICIENT_BNB:       { exit: 1, message: "Insufficient BNB for gas." },
   NO_FUNDS:               { exit: 1, message: "No funds available." },
   NO_MAIN_WALLET:         { exit: 1, message: "No main wallet address configured. Use --to <address>." },

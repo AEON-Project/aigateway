@@ -4,7 +4,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, formatUnits } from "viem";
 import { bsc } from "viem/chains";
-import { BSC_RPC_URL, USDT_BSC, FACILITATOR_ADDRESS } from "./constants.mjs";
+import { BSC_RPC_URL, USDT_BSC, FACILITATOR_ADDRESS, CAMPAIGN_TOKEN_ADDRESS } from "./constants.mjs";
 
 const ERC20_BALANCE_ABI = [
   {
@@ -42,13 +42,15 @@ function getClient() {
 }
 
 /**
- * Query BNB and USDT balance by address (no private key required).
+ * Query BNB / USDT (always) and the campaign coupon token (when withToken).
  * @param {string} address - EVM address
+ * @param {{ withToken?: boolean }} [opts] - when true, also fetch CAMPAIGN_TOKEN_ADDRESS balance
  */
-export async function getBalanceByAddress(address) {
+export async function getBalanceByAddress(address, opts = {}) {
   const client = getClient();
+  const withToken = opts.withToken === true;
 
-  const [bnbRaw, usdtRaw] = await Promise.all([
+  const calls = [
     client.getBalance({ address }),
     client.readContract({
       address: USDT_BSC,
@@ -56,24 +58,61 @@ export async function getBalanceByAddress(address) {
       functionName: "balanceOf",
       args: [address],
     }),
-  ]);
+  ];
+  if (withToken) {
+    calls.push(
+      client.readContract({
+        address: CAMPAIGN_TOKEN_ADDRESS,
+        abi: ERC20_BALANCE_ABI,
+        functionName: "balanceOf",
+        args: [address],
+      }),
+    );
+  }
 
-  return {
+  const results = await Promise.all(calls);
+  const bnbRaw = results[0];
+  const usdtRaw = results[1];
+  const tokenRaw = withToken ? results[2] : 0n;
+
+  const out = {
     address,
     bnb: formatUnits(bnbRaw, 18),
     usdt: formatUnits(usdtRaw, 18),
     bnbRaw,
     usdtRaw,
   };
+  if (withToken) {
+    out.token = formatUnits(tokenRaw, 18);
+    out.tokenRaw = tokenRaw;
+  }
+  return out;
 }
 
 /**
- * Query a wallet's BNB and USDT balance by private key.
+ * Query a wallet's BNB / USDT / (optional) coupon token balance by private key.
  * @param {string} privateKey
+ * @param {{ withToken?: boolean }} [opts]
  */
-export async function getWalletBalance(privateKey) {
+export async function getWalletBalance(privateKey, opts) {
   const account = privateKeyToAccount(privateKey);
-  return getBalanceByAddress(account.address);
+  return getBalanceByAddress(account.address, opts);
+}
+
+/**
+ * Query coupon token (CAMPAIGN_TOKEN_ADDRESS) balance for an address.
+ * @param {string} address
+ * @returns {Promise<{ raw: bigint, formatted: string }>}
+ */
+export async function getTokenBalance(address) {
+  const client = getClient();
+  const raw = await client.readContract({
+    address: CAMPAIGN_TOKEN_ADDRESS,
+    abi: ERC20_BALANCE_ABI,
+    functionName: "balanceOf",
+    args: [address],
+  });
+  return { raw, formatted: formatUnits(raw, 18) };
 }
 
 /**

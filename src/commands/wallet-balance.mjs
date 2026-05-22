@@ -13,13 +13,18 @@ export async function wallet(opts) {
 
   try {
     const config = loadConfig();
-    const { address, usdt, bnb, usdtRaw } = await getWalletBalance(privateKey);
+    const { address, usdt, bnb, usdtRaw, token, tokenRaw } = await getWalletBalance(privateKey, { withToken: true });
+
+    // 用户视角: token 与 USDT 等价 (1:1 U). totalU = usdt + token.
+    const totalU = (parseFloat(usdt) + parseFloat(token || "0")).toString();
 
     const result = {
       appId,
       mode: config.mode || "private-key",
       address,
       usdt,
+      token,
+      totalU,
       bnb,
       network: "BSC Mainnet (Chain ID: 56)",
     };
@@ -38,8 +43,8 @@ export async function wallet(opts) {
 
     emitOk("wallet-balance", result, result);
 
-    if (usdtRaw === 0n) {
-      logInfo("Warning: No USDT balance. Run 'aigateway wallet-topup --amount <usdt>' to add funds.");
+    if (usdtRaw === 0n && tokenRaw === 0n) {
+      logInfo("Warning: No USDT or coupon token balance. Run 'aigateway wallet-topup --amount <usdt>' to add funds.");
     }
   } catch (error) {
     emitErr("wallet-balance", "BALANCE_CHECK_FAILED", { message: error.message, appId });

@@ -173,67 +173,14 @@ npm install -g @aeon-ai-pay/aigateway
 | --- | --- |
 | `created: true` | 输出 "正在自动创建你的专属钱包..." + "{addr前3}...{last4} Ready." |
 | `created: false`, `ready: true` | 输出 "{addr前3}...{last4} Ready." |
-| **`needsTopup: true`** | **立即跳到 Phase 2。** 用 envelope 里的 `presets` / `minTopup`（不要硬编码） |
-| `needsTopup: false` | 钱包就绪。**继续进入 Phase 1.B(coupon)。** |
+| **`needsTopup: true`** | **立即跳到 Phase 2(优惠会嵌入在充值流程里)。** 用 envelope 里的 `presets` / `minTopup` |
+| `needsTopup: false` | 钱包就绪,继续进 Phase 3 调用 |
 
-无论是否需要充值,`wallet-init` 完成之后**总是先跑一次 `coupon-claim`**(Phase 1.B),再决定是否进 Phase 2 / Phase 3。
-
----
-
-## Phase 1.B: 活动优惠券领取(无条件运行,wallet-init 之后)
-
-`wallet-init` 之后,**立即**运行(免费、无 QR、同步阻塞):
-
-```bash
-aigateway coupon-claim
-```
-
-服务端做两步:`GET /coupon/status` 看钱包是否领过 → 已领直接返回当前状态;未领则 `POST /coupon/claim` 同步阻塞,等链上 mint sendRawTransaction(不等回执)。
-
-### `envelope.data` 形状
-
-```json
-{
-  "ok": true | false,
-  "code": "SUCCESS"                       // 本次刚领取成功
-        | "ALREADY_CLAIMED_SUCCESS"       // 之前已领过且 mint 成功
-        | "ALREADY_CLAIMED_INIT" | "ALREADY_CLAIMED_PENDING" | "ALREADY_CLAIMED_FAILED"
-        | "ALREADY_CLAIMED"               // status 与 claim 之间 race,信息不完整
-        | "CAMPAIGN_QUOTA_EXHAUSTED"      // 名额已满
-        | "CAMPAIGN_NOT_ACTIVE" | "CAMPAIGN_NOT_FOUND"
-        | "MINT_FAILED"                   // 链上 mint 失败
-        | "STATUS_NETWORK_ERROR" | "CLAIM_NETWORK_ERROR",
-  "tokenAmount": 5,
-  "tokenAddress": "0x2c9E...",
-  "txHash": "0x..." | null,
-  "campaignId": "AEON_BNB_2026Q2",
-  "errorMsg": "..." | null,
-  "claimedAt": 1779415376000 | null,
-  "freshlyClaimed": true | false           // 本次是否新领的(true=本次刚领)
-}
-```
-
-### 决策树(按 `code` 给用户输出**一行**,然后继续进 Phase 2/3)
-
-| `code` | 输出文案(按字面渲染,可中文化) |
-| --- | --- |
-| `SUCCESS` | `🎁 已为你领取 AEON x BNB 活动 ${tokenAmount} USDT 体验额度(tx: ${txHash 前10}...)` |
-| `ALREADY_CLAIMED_SUCCESS` | `你已经领过本期活动 ${tokenAmount} USDT 体验额度,可直接使用` |
-| `ALREADY_CLAIMED_INIT` / `ALREADY_CLAIMED_PENDING` | `本期活动 ${tokenAmount} USDT 已申请,链上确认中,稍后再试` |
-| `ALREADY_CLAIMED_FAILED` | `之前的活动 mint 链上失败,联系运营手动 reset。原因: ${errorMsg}` |
-| `CAMPAIGN_QUOTA_EXHAUSTED` | `⚠️ 本期活动名额已满,你将正常使用充值的 USDT` |
-| `CAMPAIGN_NOT_ACTIVE` / `CAMPAIGN_NOT_FOUND` | `当前没有进行中的活动` |
-| `MINT_FAILED` | `❌ 活动优惠券 mint 失败:${errorMsg}。不影响主流程,你可以用充值 USDT 调用` |
-| `STATUS_NETWORK_ERROR` / `CLAIM_NETWORK_ERROR` / `SERVICE_URL_MISSING` | **不要输出**,这是网络/配置问题,跟用户无关 |
-
-**重要约束**:
-- **`coupon-claim` 不阻塞主流程** —— 无论 ok / 失败 / 名额满,都继续进 Phase 2(若 wallet 需要充值)或 Phase 3
-- **只输出一行** —— 不要展开 envelope 细节,也不要让用户做选择
-- **不要重试** —— 已领过 / 名额满 / mint 失败都是终态,后续直接走 USDT 流程
+> 注: 旧版 SKILL 在 wallet-init 后无条件调 `coupon-claim`. 新版起活动优惠已**嵌入 `wallet-topup`**,只在用户真正充值时一次性完成 → 不再单独调用 `coupon-claim`. 独立命令 `aigateway coupon-claim` 仍保留供运维 / 调试手动重领,Agent 默认不要调.
 
 ---
 
-## Phase 2: 钱包充值（条件触发）
+## Phase 2: 钱包充值（条件触发，自动嵌入优惠领取）
 
 触发：Phase 1 报 `needsTopup: true`（原因可能是 `first_time` / `low_balance` / `no_approve`），**或**用户明确要求充值。
 
@@ -241,15 +188,16 @@ aigateway coupon-claim
 
 这是**给 session 钱包**充值。措辞必须明确指向钱包（与"调用费用"区分）：
 
-- 预设：**5 / 10 / 20 / 50 USDT**。自定义金额 ≥ 5 USDT
-- 命令执行**前**询问用户，问句里"钱包"必须显式出现：
+- 预设套餐：**6 / 10 / 20 / 50 U**（**U** 是用户视角的统一计价单位，活动期间 1 U = 1 USDT 等价；CLI 内部已自动处理实付）
+- 活动期间客户端自动检测钱包是否已领过优惠：未领 → 套餐 6 U 用户**实付 1 USDT** + 服务端 mint 5 个等值 token；已领或活动关闭 → 普通充值 (套餐 = 实付 USDT)
+- 命令执行**前**询问用户，问句里"钱包"必须显式出现，并提示 U 单位：
 
-  > 你想给 **session 钱包** 充值多少 USDT？（预设：5 / 10 / 20 / 50，或任意自定义 ≥ 5）
+  > 你想给 **session 钱包** 充值多少 U？（套餐: 6 / 10 / 20 / 50；活动期 1 U = 1 USDT）
 
 - 选定后执行：
 
 ```bash
-aigateway wallet-topup --amount <n>     # agent 上下文里必须总是带 --amount
+aigateway wallet-topup --amount <n>     # 单位 U; CLI 自动计算实付 USDT
 ```
 
 输出第一行（**按字面**）：
@@ -258,14 +206,29 @@ aigateway wallet-topup --amount <n>     # agent 上下文里必须总是带 --am
 > Topping up wallet...
 ```
 
-成功展示：
+### 成功 envelope 形状
 
+```json
+{
+  "ready": true,
+  "address": "0x...",
+  "usdt": "1.0",
+  "token": "5.0",
+  "totalU": "6.0",
+  "topup": { "displayAmount": "6", "actualPay": "1", "coupon": 5 },
+  "coupon": { "claimed": true, "tokenAmount": "5", "txHash": "0x..." } | null,
+  "approveTx": "0x..." | null
+}
 ```
-✅ Wallet prepared
-Address:   {addr前3}...{last4}
-Balance:   {usdt} USDT, {bnb} BNB
-Approve:   {approveTx truncated or "already approved"}
-```
+
+### 决策树（按 envelope 给用户输出**一行**总结，然后继续进 Phase 3）
+
+| 字段组合 | 输出文案 |
+| --- | --- |
+| `coupon.claimed: true` | `🎁 充值 ${topup.displayAmount} U 完成：实付 ${topup.actualPay} USDT，活动赠送 ${coupon.tokenAmount} U 体验额度，总余额 ${totalU} U` |
+| `coupon.claimed: false` | `✅ 充值 ${topup.actualPay} USDT 已到账，但优惠 mint 失败（${coupon.code}）。当前余额 ${usdt} USDT；如需补领请联系运营` |
+| `coupon: null` + `topup` 有值 | `✅ 充值 ${topup.displayAmount} USDT 完成，当前余额 ${totalU} U`（普通流程 / 已领过 / 服务端不可达） |
+| `topup: null` | `✅ Wallet ready: ${addr前3}...{last4}, balance ${totalU} U` |
 
 ⚠️ `wallet-topup` 会弹 WalletConnect 二维码 —— **必须前台同步运行**，永远不要 `run_in_background: true`。
 

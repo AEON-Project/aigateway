@@ -13,9 +13,11 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import axios from "axios";
-import { createX402Api, decodePaymentResponse, fetchPaymentRequirements } from "../x402.mjs";
+import { createX402Api, decodePaymentResponse, fetchPaymentRequirements, selectAcceptByBalance } from "../x402.mjs";
 import { resolve } from "../config.mjs";
 import { getWalletBalance, getAllowance } from "../balance.mjs";
+import { USDT_BSC } from "../constants.mjs";
+import { parseUnits } from "viem";
 import {
   fundSessionKey,
   promptTopupAmount,
@@ -150,21 +152,9 @@ export async function invoke(opts) {
 
   logInfo(`Invoking ${model}...`);
   logInfo("Fetching payment requirements...");
-  let paymentReq;
-  let requiredUsdt;
-  let paymentMethod = "USDT"; // "USDT" | "COUPON"
+  let paymentReqEnvelope;
   try {
-    paymentReq = await fetchPaymentRequirements(url);
-    requiredUsdt = paymentReq.amountUsdt;
-    // 服务端在 402 响应里的 asset 字段如果等于活动 token 合约 → 本次走优惠券支付
-    if (paymentReq.asset && paymentReq.asset.toLowerCase() === CAMPAIGN_TOKEN_ADDRESS.toLowerCase()) {
-      paymentMethod = "COUPON";
-    }
-    if (paymentMethod === "COUPON") {
-      logInfo(`💳 Paid with coupon: ${requiredUsdt} (token ${paymentReq.asset})`);
-    } else {
-      logInfo(`Required: ${requiredUsdt} USDT (pay to ${paymentReq.payTo})`);
-    }
+    paymentReqEnvelope = await fetchPaymentRequirements(url);
   } catch (e) {
     // Server may return HTTP 400 with structured { code, msg } for pricing / body errors.
     // Surface that code as-is so the agent can react (e.g. MODEL_PRICING_NOT_CONFIGURED).
@@ -186,6 +176,8 @@ export async function invoke(opts) {
   }
 
   // Balance / allowance / funding decision
+  //   先查余额, 再用 selectAcceptByBalance 决定币种 — 服务端返回 USDT + BNA 两种 accept
+  //   时, 优先扣 BNA (CAMPAIGN_TOKEN_ADDRESS), 余额不足回退到 USDT.
   logInfo("Checking wallet...");
   let needTopup = false;
   let needGas = false;
@@ -193,16 +185,47 @@ export async function invoke(opts) {
   let topupAmount = null;
   let balanceInitialUsdt = null;
   let balanceBeforeChargeUsdt = null;
+  let balanceInitialToken = null;
+  let balanceBeforeChargeToken = null;
+  let paymentReq;
+  let requiredUsdt;
+  let paymentMethod = "USDT"; // "USDT" | "COUPON"
 
   try {
-    const { address, usdt, bnb, bnbRaw } = await getWalletBalance(privateKey);
+    const { address, usdt, bnb, bnbRaw, token, tokenRaw, usdtRaw } = await getWalletBalance(privateKey, { withToken: true });
     sessionAddress = address;
     balanceInitialUsdt = usdt;
     balanceBeforeChargeUsdt = usdt;
-    const usdtNum = parseFloat(usdt);
+    balanceInitialToken = token;
+    balanceBeforeChargeToken = token;
 
     logInfo(`Wallet: ${address}`);
-    logInfo(`Balance: ${usdt} USDT, ${bnb} BNB`);
+    logInfo(`Balance: ${usdt} USDT, ${token || "0"} BNA, ${bnb} BNB`);
+
+    // 按余额选币种
+    const selection = selectAcceptByBalance(
+      paymentReqEnvelope.accepts,
+      { usdt: usdtRaw, token: tokenRaw || 0n },
+      { preferredAsset: CAMPAIGN_TOKEN_ADDRESS, fallbackAsset: USDT_BSC },
+    );
+    paymentReq = {
+      ...paymentReqEnvelope,
+      amountUsdt: selection.chosen.amountUsdt,
+      amountWei: selection.chosen.amountWei,
+      decimals: selection.chosen.decimals,
+      asset: selection.chosen.asset,
+      payTo: selection.chosen.payTo,
+    };
+    requiredUsdt = paymentReq.amountUsdt;
+    paymentMethod = String(paymentReq.asset).toLowerCase() === CAMPAIGN_TOKEN_ADDRESS.toLowerCase() ? "COUPON" : "USDT";
+    if (paymentMethod === "COUPON") {
+      logInfo(`💳 Pay with BNA: ${requiredUsdt} (chose ${selection.reason}, asset ${paymentReq.asset})`);
+    } else {
+      logInfo(`Pay with USDT: ${requiredUsdt} (chose ${selection.reason}, pay to ${paymentReq.payTo})`);
+    }
+
+    const usdtNum = parseFloat(usdt);
+    const tokenNum = parseFloat(token || "0");
 
     const allowance = await getAllowance(address);
     const requiredWei = BigInt(paymentReq.amountWei);
@@ -213,7 +236,26 @@ export async function invoke(opts) {
         details: { message: "Server returned invalid payment amount (0). Please retry later.", appId },
       };
     }
-    if (allowance >= requiredWei) {
+    // 优惠券 (COUPON) 走 token, 服务端代理合约通常已 approve, 这里只检查余额.
+    // 普通 USDT 走法不变.
+    if (paymentMethod === "COUPON") {
+      logInfo(`Payment asset: BNA (${paymentReq.asset})`);
+      if (tokenNum < requiredUsdt) {
+        // 理论不会发生 (上面 selectAcceptByBalance 已经看过余额); 防御性兜底
+        return {
+          ok: false,
+          code: "INSUFFICIENT_TOKEN",
+          details: {
+            message: `BNA balance ${token} is insufficient for required ${requiredUsdt}.`,
+            required: requiredUsdt,
+            available: token,
+            address,
+            appId,
+          },
+        };
+      }
+      logInfo(`BNA balance sufficient (${token} ≥ ${requiredUsdt}).`);
+    } else if (allowance >= requiredWei) {
       logInfo("Allowance sufficient, no approve needed.");
     } else {
       logInfo(`Allowance ${allowance} < required ${requiredWei}; approve needed.`);
@@ -223,7 +265,7 @@ export async function invoke(opts) {
       }
     }
 
-    if (usdtNum < requiredUsdt) {
+    if (paymentMethod !== "COUPON" && usdtNum < requiredUsdt) {
       needTopup = true;
       const shortfall = requiredUsdt - usdtNum;
       const minTopup = Math.max(MIN_TOPUP_USDT, Math.ceil(shortfall));
@@ -293,8 +335,9 @@ export async function invoke(opts) {
 
     logInfo("Re-checking wallet balance...");
     try {
-      const { usdt, bnbRaw } = await getWalletBalance(privateKey);
+      const { usdt, bnbRaw, token } = await getWalletBalance(privateKey, { withToken: true });
       balanceBeforeChargeUsdt = usdt;
+      balanceBeforeChargeToken = token;
       const usdtNum = parseFloat(usdt);
       if (needGas && bnbRaw === 0n) {
         return {
@@ -375,12 +418,18 @@ export async function invoke(opts) {
 
   // Post-payment balance probe (best effort).
   let balanceAfterUsdt = null;
+  let balanceAfterToken = null;
   try {
-    const after = await getWalletBalance(privateKey);
+    const after = await getWalletBalance(privateKey, { withToken: true });
     balanceAfterUsdt = after.usdt;
+    balanceAfterToken = after.token;
   } catch (e) {
     logInfo(`Post-payment balance check failed: ${e.message}`);
   }
+
+  const totalUAfter = balanceAfterUsdt != null
+    ? (parseFloat(balanceAfterUsdt) + parseFloat(balanceAfterToken || "0")).toString()
+    : null;
 
   return {
     ok: true,
@@ -398,6 +447,10 @@ export async function invoke(opts) {
         initial: balanceInitialUsdt,
         before: balanceBeforeChargeUsdt,
         after: balanceAfterUsdt,
+        tokenInitial: balanceInitialToken,
+        tokenBefore: balanceBeforeChargeToken,
+        tokenAfter: balanceAfterToken,
+        totalUAfter,
         charged: requiredUsdt,
         topup: topupAmount,
       },

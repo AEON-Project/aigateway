@@ -4,14 +4,19 @@
  * Flow:
  *   1. Verify the session key exists (created earlier by `aigateway wallet-init`).
  *   2. Check USDT balance + facilitator allowance.
- *   3. If USDT < LOW_BALANCE_THRESHOLD (1 USDT) or allowance == 0, open WalletConnect to fund:
+ *   3. 调 /open/api/coupon/status 决定是否进入【优惠模式】:
+ *        claimed=false → 优惠模式: 套餐金额 displayAmount, 实付 = displayAmount - COUPON_AMOUNT_USDT;
+ *        claimed=true / 服务端不可达 → 普通模式: 实付 = displayAmount.
+ *   4. If USDT < LOW_BALANCE_THRESHOLD (1 USDT) or allowance == 0, open WalletConnect to fund:
  *      - Top-up amount: TTY mode picks interactively from presets [6, 10, 20, 50] or a custom value;
  *                       non-TTY mode requires `--amount <usdt>`, otherwise TOPUP_REQUIRED is emitted.
  *      - 0.0003 BNB is transferred too when an approve transaction is needed.
- *   4. The session key broadcasts ERC20.approve(facilitator, MaxUint256) once.
- *   5. Re-query balance / allowance and return the final state.
+ *   5. The session key broadcasts ERC20.approve(facilitator, MaxUint256) once.
+ *   6. 优惠模式: 转账成功后同步阻塞 /open/api/coupon/claim → 服务端 mint 5 token 到 session key.
+ *      mint 结果回 envelope.coupon, 由 LLM 决定文案.
+ *   7. Re-query balance / allowance / token 并返回最终状态.
  */
-import { resolve } from "../config.mjs";
+import { resolve, getOrCreateDeviceId } from "../config.mjs";
 import { getWalletBalance, getAllowance } from "../balance.mjs";
 import {
   fundSessionKey,
@@ -20,13 +25,16 @@ import {
   LOW_BALANCE_THRESHOLD,
   MIN_TOPUP_USDT,
   TOPUP_PRESETS,
+  COUPON_AMOUNT_USDT,
 } from "../funding.mjs";
 import { WalletConnectError } from "../walletconnect.mjs";
+import { checkCouponStatus, claimCoupon } from "../coupon.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 export async function topup(opts) {
   logInfo("Topping up wallet: verifying readiness...");
   const privateKey = resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
+  const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
   const appId = opts.appId;
 
   if (!privateKey) {
@@ -37,9 +45,9 @@ export async function topup(opts) {
     return;
   }
 
-  let address, usdt, bnb, bnbRaw;
+  let address, usdt, bnb, bnbRaw, token, tokenRaw;
   try {
-    ({ address, usdt, bnb, bnbRaw } = await getWalletBalance(privateKey));
+    ({ address, usdt, bnb, bnbRaw, token, tokenRaw } = await getWalletBalance(privateKey, { withToken: true }));
   } catch (e) {
     emitErr("wallet-topup", "BALANCE_CHECK_FAILED", {
       message: `Balance check failed: ${e.message}`,
@@ -49,8 +57,29 @@ export async function topup(opts) {
   }
   const usdtNum = parseFloat(usdt);
   logInfo(`Wallet:    ${address}`);
-  logInfo(`Balance:   ${usdt} USDT, ${bnb} BNB`);
+  logInfo(`Balance:   ${usdt} USDT, ${token || "0"} coupon token, ${bnb} BNB`);
   logInfo(`App ID:    ${appId}`);
+
+  // ─── Coupon eligibility probe ───────────────────────────────────────────
+  //   claimed=false → 进入优惠模式 (套餐 - 5 = 实付)
+  //   claimed=true / 服务端不可达 → 普通模式 (套餐 = 实付)
+  let couponEligible = false;
+  let couponCampaignId = null;
+  if (serviceUrl) {
+    logInfo("Checking coupon eligibility...");
+    const status = await checkCouponStatus({ serviceUrl, userAddress: address });
+    if (status.ok) {
+      couponEligible = status.claimed === false;
+      couponCampaignId = status.campaignId || null;
+      if (couponEligible) {
+        logInfo(`🎁 Coupon available: ${COUPON_AMOUNT_USDT} U auto-applied for first-time campaign claim.`);
+      } else {
+        logInfo(`Coupon already claimed (mintStatus=${status.mintStatus || "?"}); regular top-up flow.`);
+      }
+    } else {
+      logInfo(`Coupon status unreachable (${status.errorMsg}); falling back to regular top-up.`);
+    }
+  }
 
   logInfo("Checking facilitator allowance...");
   let allowance;
@@ -67,12 +96,14 @@ export async function topup(opts) {
 
   const explicitTopup = opts.amount != null && String(opts.amount).trim() !== "";
   const balanceLow = usdtNum < LOW_BALANCE_THRESHOLD;
+  // 优惠模式下: 即便 USDT 已足, 仍鼓励用户走优惠流程领 token. 但仅当显式 --amount 或 TTY 才触发.
+  // 这里保持: 优惠可用 + (balanceLow 或 explicit) 才触发优惠 topup.
   const needTopup = balanceLow || explicitTopup;
   const needApprove = allowance === 0n;
   const needGas = needApprove && bnbRaw === 0n;
 
-  // Already prepared: balance is sufficient and facilitator is approved
-  if (!needTopup && !needApprove) {
+  // Already prepared: balance is sufficient and facilitator is approved, AND no coupon to grab
+  if (!needTopup && !needApprove && !couponEligible) {
     logInfo("Wallet already prepared (balance ≥ minimum, facilitator approved).");
     const data = {
       ready: true,
@@ -80,9 +111,12 @@ export async function topup(opts) {
       address,
       initialUsdt: usdt,
       usdt,
+      token: token || "0",
+      totalU: (usdtNum + parseFloat(token || "0")).toString(),
       bnb,
       allowance: allowance.toString(),
       topup: null,
+      coupon: null,
       approveTx: null,
     };
     emitOk("wallet-topup", data, { ...data, success: true });
@@ -90,10 +124,13 @@ export async function topup(opts) {
   }
 
   // Decide the top-up amount
-  let topupAmount = null;
+  //   displayAmount = 用户/产品视角下的套餐金额 (U)
+  //   actualPay     = 实际 USDT 转账金额; 优惠模式下 = displayAmount - COUPON_AMOUNT_USDT, 否则 = displayAmount
+  let displayAmount = null;
+  let actualPay = null;
   if (needTopup) {
     if (balanceLow) {
-      logInfo(`USDT balance ${usdtNum} < ${LOW_BALANCE_THRESHOLD} USDT threshold; a top-up of ≥ ${MIN_TOPUP_USDT} USDT is required.`);
+      logInfo(`USDT balance ${usdtNum} < ${LOW_BALANCE_THRESHOLD} USDT threshold; a top-up of ≥ ${MIN_TOPUP_USDT} U is required.`);
     } else {
       logInfo(`Explicit top-up requested via --amount (current balance ${usdtNum} USDT).`);
     }
@@ -108,44 +145,71 @@ export async function topup(opts) {
       }
       if (amt < MIN_TOPUP_USDT) {
         emitErr("wallet-topup", "TOPUP_AMOUNT_TOO_SMALL", {
-          message: `--amount ${amt} USDT is below the ${MIN_TOPUP_USDT} USDT minimum.`,
+          message: `--amount ${amt} U is below the ${MIN_TOPUP_USDT} U minimum.`,
           minTopup: MIN_TOPUP_USDT,
           appId,
         });
         return;
       }
-      topupAmount = String(opts.amount);
-      logInfo(`Using --amount: ${topupAmount} USDT`);
+      displayAmount = String(opts.amount);
+      logInfo(`Using --amount: ${displayAmount} U`);
     } else if (process.stdin.isTTY) {
-      topupAmount = await promptTopupAmount(MIN_TOPUP_USDT);
-      logInfo(`Selected top-up amount: ${topupAmount} USDT`);
+      displayAmount = await promptTopupAmount(MIN_TOPUP_USDT, {
+        couponMode: couponEligible,
+        couponAmount: COUPON_AMOUNT_USDT,
+      });
+      logInfo(`Selected package: ${displayAmount} U`);
     } else {
       emitErr("wallet-topup", "TOPUP_REQUIRED", {
-        message: `USDT balance ${usdt} is below the ${LOW_BALANCE_THRESHOLD} USDT threshold. Choose a top-up amount and rerun with --amount <usdt>.`,
+        message: `USDT balance ${usdt} is below the ${LOW_BALANCE_THRESHOLD} USDT threshold. Choose a top-up amount and rerun with --amount <u>.`,
         threshold: LOW_BALANCE_THRESHOLD,
         minTopup: MIN_TOPUP_USDT,
         currentBalance: usdt,
         address,
         appId,
         presets: TOPUP_PRESETS,
-        hint: "Rerun: aigateway wallet-topup --amount <usdt> --app-id <appId>",
+        coupon: couponEligible
+          ? { eligible: true, couponAmount: COUPON_AMOUNT_USDT, campaignId: couponCampaignId, hint: `Your actual USDT payment will be (amount - ${COUPON_AMOUNT_USDT}).` }
+          : { eligible: false },
+        hint: "Rerun: aigateway wallet-topup --amount <u> --app-id <appId>",
       });
       return;
     }
+
+    // 套餐金额 → 实付换算
+    const displayNum = Number(displayAmount);
+    if (couponEligible) {
+      const pay = displayNum - COUPON_AMOUNT_USDT;
+      if (pay < 1) {
+        // 套餐 < 6 时优惠后会 ≤ 0, 拒绝
+        emitErr("wallet-topup", "TOPUP_AMOUNT_TOO_SMALL", {
+          message: `Coupon mode: package ${displayAmount} U leaves actual pay ${pay} USDT (< 1). Minimum package is ${COUPON_AMOUNT_USDT + 1} U.`,
+          minTopup: COUPON_AMOUNT_USDT + 1,
+          appId,
+        });
+        return;
+      }
+      actualPay = String(pay);
+      logInfo(`🎁 Coupon applied: package ${displayAmount} U − ${COUPON_AMOUNT_USDT} U coupon = ${actualPay} USDT actual payment.`);
+    } else {
+      actualPay = String(displayNum);
+    }
   }
 
-  // WalletConnect top-up (USDT + optional BNB for approve gas)
+  // WalletConnect top-up (actualPay USDT + optional BNB for approve gas)
   if (needTopup || needGas) {
     const willTransfer = [];
-    if (needTopup) willTransfer.push(`${topupAmount} USDT`);
+    if (needTopup) willTransfer.push(`${actualPay} USDT${couponEligible ? ` (${displayAmount} U package, ${COUPON_AMOUNT_USDT} U coupon)` : ""}`);
     if (needGas) willTransfer.push("0.0003 BNB (approve gas)");
     logInfo(`Funding flow triggered (${willTransfer.join(" + ")})...`);
     logInfo("Opening WalletConnect QR — please scan with your wallet app.");
     try {
       await fundSessionKey({
         sessionAddress: address,
-        usdtAmount: needTopup ? topupAmount : null,
+        usdtAmount: needTopup ? actualPay : null,
         needGas,
+        displayAmount: needTopup && couponEligible ? displayAmount : null,
+        couponAmount: needTopup && couponEligible ? COUPON_AMOUNT_USDT : 0,
       });
     } catch (e) {
       if (e instanceof WalletConnectError) {
@@ -193,28 +257,73 @@ export async function topup(opts) {
     }
   }
 
-  // Final balance + allowance re-check
+  // ─── Coupon claim (优惠模式 + 真实进行了转账) ───────────────────────────
+  //   阻塞同步等待服务端 mint 完成. 失败 envelope.coupon.claimed=false, 但充值已成功 (ready=true).
+  let couponResult = null;
+  if (couponEligible && needTopup && serviceUrl) {
+    logInfo("🎁 Claiming AEON x BNB coupon (this may take up to 90s)...");
+    const deviceId = getOrCreateDeviceId();
+    const claim = await claimCoupon({
+      serviceUrl,
+      userAddress: address,
+      deviceId,
+      appId,
+      campaignId: couponCampaignId || undefined,
+    });
+    if (claim.ok) {
+      logInfo(`✅ Coupon claimed: +${claim.tokenAmount} U (tx ${claim.txHash})`);
+      couponResult = {
+        claimed: true,
+        campaignId: claim.campaignId,
+        tokenAddress: claim.tokenAddress,
+        tokenAmount: claim.tokenAmount,
+        txHash: claim.txHash,
+      };
+    } else {
+      logInfo(`⚠️  Coupon claim failed: ${claim.code} — ${claim.errorMsg || ""}. Top-up itself succeeded.`);
+      couponResult = {
+        claimed: false,
+        campaignId: couponCampaignId,
+        code: claim.code,
+        errorMsg: claim.errorMsg,
+      };
+    }
+  }
+
+  // Final balance + allowance re-check (with token)
   let finalUsdt = usdt;
   let finalBnb = bnb;
+  let finalToken = token || "0";
   let finalAllowance = allowance;
   try {
-    const final = await getWalletBalance(privateKey);
+    const final = await getWalletBalance(privateKey, { withToken: true });
     finalUsdt = final.usdt;
     finalBnb = final.bnb;
+    finalToken = final.token;
     finalAllowance = await getAllowance(address);
   } catch (e) {
     logInfo(`Final balance/allowance check failed: ${e.message}`);
   }
 
+  const totalU = (parseFloat(finalUsdt) + parseFloat(finalToken)).toString();
   const data = {
     ready: true,
     appId,
     address,
     initialUsdt: usdt,
     usdt: finalUsdt,
+    token: finalToken,
+    totalU,
     bnb: finalBnb,
     allowance: finalAllowance.toString(),
-    topup: topupAmount,
+    topup: displayAmount
+      ? {
+          displayAmount,
+          actualPay,
+          coupon: couponEligible ? COUPON_AMOUNT_USDT : 0,
+        }
+      : null,
+    coupon: couponResult,
     approveTx,
   };
   emitOk("wallet-topup", data, { ...data, success: true });

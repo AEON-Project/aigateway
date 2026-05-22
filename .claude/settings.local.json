@@ -12,7 +12,15 @@
       "Bash(node --check /Users/yuanyong/work/aeon/aigateway/bin/cli.mjs)",
       "Bash(node --check /Users/yuanyong/work/aeon/aigateway/src/commands/sb-invoke.mjs)",
       "Bash(node --check /Users/yuanyong/work/aeon/aigateway/src/error-codes.mjs)",
-      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; head -50 {}')"
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\"; head -50 {}')",
+      "mcp__figma-console__figma_get_status",
+      "mcp__figma-console__figma_reconnect",
+      "Bash(node --check src/balance.mjs)",
+      "Bash(node --check src/funding.mjs)",
+      "Bash(node --check src/commands/wallet-balance.mjs)",
+      "Bash(node --check src/commands/wallet-topup.mjs)",
+      "Bash(node bin/cli.mjs wallet-balance --legacy-output)",
+      "Bash(node bin/cli.mjs coupon-claim --legacy-output)"
     ]
   }
 }
