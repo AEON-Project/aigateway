@@ -207,11 +207,11 @@ export async function invoke(opts) {
     logInfo(`Wallet: ${address}`);
     logInfo(`Balance: ${combinedU} U${campaignActive ? "  (含 BNA)" : ""}, ${bnb} BNB`);
 
-    // 按余额选币种
+    // 按余额 + 活动状态选币种 (campaignActive=false 强制 USDT, 不选 BNA)
     const selection = selectAcceptByBalance(
       paymentReqEnvelope.accepts,
       { usdt: usdtRaw, token: tokenRaw || 0n },
-      { preferredAsset: CAMPAIGN_TOKEN_ADDRESS, fallbackAsset: USDT_BSC },
+      { preferredAsset: CAMPAIGN_TOKEN_ADDRESS, fallbackAsset: USDT_BSC, campaignActive },
     );
     paymentReq = {
       ...paymentReqEnvelope,

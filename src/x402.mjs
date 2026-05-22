@@ -126,15 +126,17 @@ export async function fetchPaymentRequirements(url, options = {}) {
 }
 
 /**
- * 根据钱包余额从 accepts 列表选币种.
- * 规则: 优先扣 BNA 活动代币 (preferredAsset, 通常为 CAMPAIGN_TOKEN_ADDRESS),
- *       若 BNA 余额 < 该币种 required → 回退到 fallbackAsset (USDT).
- * 若 accepts 只有一个选项 → 直接返回该选项.
+ * 根据钱包余额 + 活动状态从 accepts 列表选币种.
+ * 规则:
+ *   - campaignActive=false → 强制走 fallback (USDT), 即使 accepts 含 BNA option 也忽略
+ *     (服务端理论上不会返回 BNA, 这里是客户端兜底防止脏数据/旧版服务端)
+ *   - campaignActive=true  → 优先 BNA (preferredAsset), BNA 余额不足回退 USDT
+ *   - accepts 只有一个 → 直接返回 (服务端已替客户端决定)
  *
  * @param {Array<{asset:string, amountUsdt:number, amountWei:string, ...}>} accepts
  * @param {{usdt: bigint, token: bigint}} balances - 钱包余额 (wei)
- * @param {{preferredAsset: string, fallbackAsset: string}} prefs
- * @returns {{ chosen: object, reason: "preferred"|"fallback"|"only-one" }}
+ * @param {{preferredAsset: string, fallbackAsset: string, campaignActive?: boolean}} prefs
+ * @returns {{ chosen: object, reason: "preferred"|"fallback"|"only-one"|"campaign-closed" }}
  */
 export function selectAcceptByBalance(accepts, balances, prefs) {
   if (accepts.length === 1) return { chosen: accepts[0], reason: "only-one" };
@@ -142,6 +144,13 @@ export function selectAcceptByBalance(accepts, balances, prefs) {
   const fallbackLower = String(prefs.fallbackAsset || "").toLowerCase();
   const preferred = accepts.find((a) => String(a.asset).toLowerCase() === preferLower);
   const fallback = accepts.find((a) => String(a.asset).toLowerCase() === fallbackLower);
+
+  // 活动关闭时, 即便 accepts 含 BNA option 也不选, 强制走 USDT
+  if (prefs.campaignActive === false) {
+    if (fallback) return { chosen: fallback, reason: "campaign-closed" };
+    return { chosen: accepts[0], reason: "campaign-closed" };
+  }
+
   if (preferred) {
     const needWei = BigInt(preferred.amountWei);
     if (balances.token >= needWei) {
