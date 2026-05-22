@@ -183,21 +183,18 @@ export async function invoke(opts) {
   let needGas = false;
   let sessionAddress;
   let topupAmount = null;
-  let balanceInitialUsdt = null;
+  let balanceInitialUsdt = null;      // U 总额 (USDT + BNA)
   let balanceBeforeChargeUsdt = null;
-  let balanceInitialToken = null;
-  let balanceBeforeChargeToken = null;
   let paymentReq;
   let requiredUsdt;
-  let paymentMethod = "USDT"; // "USDT" | "COUPON"
+  let paymentMethod = "USDT"; // "USDT" | "COUPON" — 内部诊断用
 
   try {
     const { address, usdt, bnb, bnbRaw, token, tokenRaw, usdtRaw } = await getWalletBalance(privateKey, { withToken: true });
     sessionAddress = address;
-    balanceInitialUsdt = usdt;
-    balanceBeforeChargeUsdt = usdt;
-    balanceInitialToken = token;
-    balanceBeforeChargeToken = token;
+    const combinedU = (parseFloat(usdt) + parseFloat(token || "0")).toString();
+    balanceInitialUsdt = combinedU;
+    balanceBeforeChargeUsdt = combinedU;
 
     logInfo(`Wallet: ${address}`);
     logInfo(`Balance: ${usdt} USDT, ${token || "0"} BNA, ${bnb} BNB`);
@@ -336,8 +333,7 @@ export async function invoke(opts) {
     logInfo("Re-checking wallet balance...");
     try {
       const { usdt, bnbRaw, token } = await getWalletBalance(privateKey, { withToken: true });
-      balanceBeforeChargeUsdt = usdt;
-      balanceBeforeChargeToken = token;
+      balanceBeforeChargeUsdt = (parseFloat(usdt) + parseFloat(token || "0")).toString();
       const usdtNum = parseFloat(usdt);
       if (needGas && bnbRaw === 0n) {
         return {
@@ -416,20 +412,14 @@ export async function invoke(opts) {
     }
   }
 
-  // Post-payment balance probe (best effort).
+  // Post-payment balance probe (合并 USDT + BNA, 对外只暴露统一 U)
   let balanceAfterUsdt = null;
-  let balanceAfterToken = null;
   try {
     const after = await getWalletBalance(privateKey, { withToken: true });
-    balanceAfterUsdt = after.usdt;
-    balanceAfterToken = after.token;
+    balanceAfterUsdt = (parseFloat(after.usdt) + parseFloat(after.token || "0")).toString();
   } catch (e) {
     logInfo(`Post-payment balance check failed: ${e.message}`);
   }
-
-  const totalUAfter = balanceAfterUsdt != null
-    ? (parseFloat(balanceAfterUsdt) + parseFloat(balanceAfterToken || "0")).toString()
-    : null;
 
   return {
     ok: true,
@@ -441,16 +431,11 @@ export async function invoke(opts) {
       // unwrap server envelope: { payer, transaction, data: <upstream-response> } → <upstream-response>
       raw: response.data?.data ?? response.data,
       paymentResponse,
-      paymentMethod,           // "USDT" | "COUPON" — agent / CLI 可据此显示扣款方式
-      paymentToken: paymentReq.asset,
+      paymentMethod,           // "USDT" | "COUPON" — 内部诊断用; 用户视角下 token 与 USDT 等价 U
       balance: {
-        initial: balanceInitialUsdt,
-        before: balanceBeforeChargeUsdt,
-        after: balanceAfterUsdt,
-        tokenInitial: balanceInitialToken,
-        tokenBefore: balanceBeforeChargeToken,
-        tokenAfter: balanceAfterToken,
-        totalUAfter,
+        initial: balanceInitialUsdt,    // 调用前 U 总额
+        before: balanceBeforeChargeUsdt, // 扣款前 U 总额 (经过 topup 后)
+        after: balanceAfterUsdt,         // 扣款后 U 总额
         charged: requiredUsdt,
         topup: topupAmount,
       },

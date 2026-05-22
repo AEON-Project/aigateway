@@ -45,9 +45,18 @@ export async function topup(opts) {
     return;
   }
 
+  // 对外只暴露统一 "U" (= USDT + BNA token), 不区分细分币种
   let address, usdt, bnb, bnbRaw, token, tokenRaw;
+  let usdtOnly; // USDT 单独数值, 内部用于决定 actualPay 实际转账金额
   try {
-    ({ address, usdt, bnb, bnbRaw, token, tokenRaw } = await getWalletBalance(privateKey, { withToken: true }));
+    const bal = await getWalletBalance(privateKey, { withToken: true });
+    address = bal.address;
+    bnb = bal.bnb;
+    bnbRaw = bal.bnbRaw;
+    token = bal.token || "0";
+    tokenRaw = bal.tokenRaw;
+    usdtOnly = bal.usdt;
+    usdt = (parseFloat(bal.usdt) + parseFloat(token)).toString();
   } catch (e) {
     emitErr("wallet-topup", "BALANCE_CHECK_FAILED", {
       message: `Balance check failed: ${e.message}`,
@@ -57,22 +66,26 @@ export async function topup(opts) {
   }
   const usdtNum = parseFloat(usdt);
   logInfo(`Wallet:    ${address}`);
-  logInfo(`Balance:   ${usdt} USDT, ${token || "0"} coupon token, ${bnb} BNB`);
+  logInfo(`Balance:   ${usdt} U, ${bnb} BNB`);
   logInfo(`App ID:    ${appId}`);
 
   // ─── Coupon eligibility probe ───────────────────────────────────────────
-  //   claimed=false → 进入优惠模式 (套餐 - 5 = 实付)
-  //   claimed=true / 服务端不可达 → 普通模式 (套餐 = 实付)
+  //   claimed=false                                  → 优惠模式 (套餐 - 5 = 实付)
+  //   claimed=true + mintStatus ∈ {FAIL, FAILED}     → 优惠模式 (服务端允许 retry mint)
+  //   claimed=true + mintStatus ∈ {SUCCESS,INIT,PENDING} → 普通充值
+  //   服务端不可达                                    → 普通充值 (降级)
   let couponEligible = false;
   let couponCampaignId = null;
   if (serviceUrl) {
     logInfo("Checking coupon eligibility...");
     const status = await checkCouponStatus({ serviceUrl, userAddress: address });
     if (status.ok) {
-      couponEligible = status.claimed === false;
+      const failedMint = status.claimed && (status.mintStatus === "FAILED" || status.mintStatus === "FAIL");
+      couponEligible = !status.claimed || failedMint;
       couponCampaignId = status.campaignId || null;
       if (couponEligible) {
-        logInfo(`🎁 Coupon available: ${COUPON_AMOUNT_USDT} U auto-applied for first-time campaign claim.`);
+        const hint = failedMint ? "previous mint FAILED, retrying" : "first-time campaign claim";
+        logInfo(`🎁 Coupon available: ${COUPON_AMOUNT_USDT} U auto-applied (${hint}).`);
       } else {
         logInfo(`Coupon already claimed (mintStatus=${status.mintStatus || "?"}); regular top-up flow.`);
       }
@@ -111,8 +124,6 @@ export async function topup(opts) {
       address,
       initialUsdt: usdt,
       usdt,
-      token: token || "0",
-      totalU: (usdtNum + parseFloat(token || "0")).toString(),
       bnb,
       allowance: allowance.toString(),
       topup: null,
@@ -290,30 +301,25 @@ export async function topup(opts) {
     }
   }
 
-  // Final balance + allowance re-check (with token)
+  // Final balance + allowance re-check (合并 USDT + BNA → 统一 U)
   let finalUsdt = usdt;
   let finalBnb = bnb;
-  let finalToken = token || "0";
   let finalAllowance = allowance;
   try {
     const final = await getWalletBalance(privateKey, { withToken: true });
-    finalUsdt = final.usdt;
+    finalUsdt = (parseFloat(final.usdt) + parseFloat(final.token || "0")).toString();
     finalBnb = final.bnb;
-    finalToken = final.token;
     finalAllowance = await getAllowance(address);
   } catch (e) {
     logInfo(`Final balance/allowance check failed: ${e.message}`);
   }
 
-  const totalU = (parseFloat(finalUsdt) + parseFloat(finalToken)).toString();
   const data = {
     ready: true,
     appId,
     address,
     initialUsdt: usdt,
     usdt: finalUsdt,
-    token: finalToken,
-    totalU,
     bnb: finalBnb,
     allowance: finalAllowance.toString(),
     topup: displayAmount

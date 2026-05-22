@@ -205,7 +205,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
   const EXPIRE_MS = ${QR_EXPIRE_MS};
   const startTime = Date.now();
 
-  // Clock countdown icon (exported from Figma 1:63, 16x16) — uses currentColor to track `.timer` color
+  // Clock countdown icon (exported from Figma 1:63, 16x16) — uses currentColor to track .timer color
   const CLOCK_SVG = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.667 8C14.667 11.68 11.68 14.667 8 14.667C4.32 14.667 1.334 11.68 1.334 8C1.334 4.32 4.32 1.333 8 1.333C11.68 1.333 14.667 4.32 14.667 8Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.476 10.12L8.409 8.887C8.049 8.674 7.756 8.16 7.756 7.74V5.007" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   // Info / hint icon (exported from Figma 1:43, 20x20)
   const INFO_SVG = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path opacity="0.2" d="M10 18.333C14.6 18.333 18.331 14.602 18.331 10C18.331 5.397 14.6 1.666 10 1.666C5.395 1.666 1.664 5.397 1.664 10C1.664 14.602 5.395 18.333 10 18.333Z" fill="#737A86"/><path d="M10 13.333V10" stroke="#737A86" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 6.666H10.008" stroke="#737A86" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';

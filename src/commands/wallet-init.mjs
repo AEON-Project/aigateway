@@ -41,6 +41,7 @@ export async function initWallet(opts) {
   }
 
   // On-chain status check
+  //   对外只暴露统一 "U" 余额 (= USDT + BNA token), 不区分细分币种.
   let usdt = "0";
   let bnb = "0";
   let usdtNum = 0;
@@ -53,11 +54,13 @@ export async function initWallet(opts) {
     logInfo("Fresh wallet — skipping balance lookup (assumed empty).");
   } else {
     try {
-      const bal = await getWalletBalance(config.privateKey);
-      usdt = bal.usdt;
+      const bal = await getWalletBalance(config.privateKey, { withToken: true });
+      const usdtOnly = parseFloat(bal.usdt);
+      const tokenOnly = parseFloat(bal.token || "0");
+      usdtNum = usdtOnly + tokenOnly;
+      usdt = usdtNum.toString();
       bnb = bal.bnb;
-      usdtNum = parseFloat(usdt);
-      logInfo(`Balance: ${usdt} USDT, ${bnb} BNB`);
+      logInfo(`Balance: ${usdt} U, ${bnb} BNB`);
       allowance = await getAllowance(config.address);
       logInfo(`Allowance: ${allowance === 0n ? "0 (approve required)" : "already approved"}`);
     } catch (e) {
@@ -83,6 +86,7 @@ export async function initWallet(opts) {
     needsTopup = true;
     topupReason = "chain_check_failed";
   } else if (usdtNum < LOW_BALANCE_THRESHOLD) {
+    // usdtNum 已合并了 BNA token (用户视角下 U 总额)
     needsTopup = true;
     topupReason = "low_balance";
   } else if (allowance === 0n) {

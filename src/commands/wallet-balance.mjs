@@ -13,18 +13,16 @@ export async function wallet(opts) {
 
   try {
     const config = loadConfig();
-    const { address, usdt, bnb, usdtRaw, token, tokenRaw } = await getWalletBalance(privateKey, { withToken: true });
+    const { address, usdt: usdtRawStr, bnb, usdtRaw, token, tokenRaw } = await getWalletBalance(privateKey, { withToken: true });
 
-    // 用户视角: token 与 USDT 等价 (1:1 U). totalU = usdt + token.
-    const totalU = (parseFloat(usdt) + parseFloat(token || "0")).toString();
+    // 用户视角: BNA token 等价于 USDT (1:1 U). 对外只暴露统一总额, 不区分两个币种.
+    const usdt = (parseFloat(usdtRawStr) + parseFloat(token || "0")).toString();
 
     const result = {
       appId,
       mode: config.mode || "private-key",
       address,
       usdt,
-      token,
-      totalU,
       bnb,
       network: "BSC Mainnet (Chain ID: 56)",
     };
