@@ -47,7 +47,7 @@ No build step — all source is native ES Modules (`.mjs`), executed directly by
 ### Core Modules (`src/`)
 - `x402.mjs` — x402 protocol client: wraps axios with EIP-712 signing, captures `orderNo` from 402 responses. Supports GET and POST 402 probes (`fetchPaymentRequirements(url, { method, data })`).
 - `walletconnect.mjs` — WalletConnect v2 integration: QR code UI (custom HTML page), local status server, ERC20/native transfers. Throws `WalletConnectError` with stable codes (PAYMENT_TIMEOUT / PAYMENT_REJECTED / WALLET_ERROR) for caller-side `emitErr` handling.
-- `funding.mjs` — Shared funding flow: `fundSessionKey()` (WalletConnect USDT + BNB transfer), `approveFacilitator()` (session-key broadcast of `ERC20.approve(facilitator, MaxUint256)`), `promptTopupAmount()` (TTY-only preset picker). Constants: `LOW_BALANCE_THRESHOLD = 1`, `MIN_TOPUP_USDT = 5`, `TOPUP_PRESETS = [5, 10, 20, 50]`, `AUTO_GAS_BNB = "0.0003"`.
+- `funding.mjs` — Shared funding flow: `fundSessionKey()` (WalletConnect USDT + BNB transfer), `approveFacilitator()` (session-key broadcast of `ERC20.approve(facilitator, MaxUint256)`), `promptTopupAmount()` (TTY-only preset picker). Constants: `LOW_BALANCE_THRESHOLD = 1`, `MIN_TOPUP_USDT = 5`, `TOPUP_PRESETS = [6, 10, 20, 50]`, `AUTO_GAS_BNB = "0.0003"`.
 - `balance.mjs` — EVM balance / allowance queries via Viem public client on BSC.
 - `config.mjs` — Config persistence at `~/.aigateway/config.json` (mode 0o600). Priority: CLI args > env vars > config file. Single `serviceUrl` (default `https://ai-api.aeon.xyz`).
 - `catalog.mjs` — `fetchCatalog()` + `findModel()` against the live server catalog endpoint. No local cache; `sb invoke` always fetches fresh for client-side validation.

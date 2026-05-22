@@ -34,7 +34,7 @@ import { logInfo } from "./output.mjs";
  */
 export const LOW_BALANCE_THRESHOLD = 1;
 export const MIN_TOPUP_USDT = 5;
-export const TOPUP_PRESETS = [5, 10, 20, 50];
+export const TOPUP_PRESETS = [6, 10, 20, 50];
 export const AUTO_GAS_BNB = "0.0003";
 
 const ERC20_APPROVE_ABI = [

@@ -56,7 +56,7 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "no_approve" | "chain_check_failed",
   "minTopup": 5,
-  "presets": [5, 10, 20, 50],
+  "presets": [6, 10, 20, 50],
   "serviceUrl": "https://..."
 }
 ```
@@ -124,7 +124,7 @@ Failure shapes carry extra fields per code, e.g.:
     "required": 0.01,
     "currentBalance": "0",
     "address": "0x...",
-    "presets": [5, 10, 20, 50],
+    "presets": [6, 10, 20, 50],
     "hint": "Rerun: aigateway wallet-topup --amount <usdt> --app-id ..."
   }
 }

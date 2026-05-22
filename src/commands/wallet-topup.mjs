@@ -5,7 +5,7 @@
  *   1. Verify the session key exists (created earlier by `aigateway wallet-init`).
  *   2. Check USDT balance + facilitator allowance.
  *   3. If USDT < LOW_BALANCE_THRESHOLD (1 USDT) or allowance == 0, open WalletConnect to fund:
- *      - Top-up amount: TTY mode picks interactively from presets [5, 10, 20, 50] or a custom value;
+ *      - Top-up amount: TTY mode picks interactively from presets [6, 10, 20, 50] or a custom value;
  *                       non-TTY mode requires `--amount <usdt>`, otherwise TOPUP_REQUIRED is emitted.
  *      - 0.0003 BNB is transferred too when an approve transaction is needed.
  *   4. The session key broadcasts ERC20.approve(facilitator, MaxUint256) once.

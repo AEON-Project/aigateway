@@ -163,7 +163,7 @@ npm install -g @aeon-ai-pay/aigateway
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "no_approve" | "chain_check_failed",
   "minTopup": 5,
-  "presets": [5, 10, 20, 50]
+  "presets": [6, 10, 20, 50]
 }
 ```
 
