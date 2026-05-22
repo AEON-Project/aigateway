@@ -5,9 +5,9 @@
  * AEON AI Gateway uses a single x402 service (ai-api.aeon.xyz).
  */
 import {readFileSync, writeFileSync, mkdirSync, chmodSync} from "fs";
-import {randomUUID} from "crypto";
 import {join} from "path";
 import {homedir} from "os";
+import {getHardwareFingerprint} from "./device-fingerprint.mjs";
 
 const CONFIG_DIR = join(homedir(), ".aigateway");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
@@ -26,15 +26,31 @@ export function loadConfig() {
 }
 
 /**
- * 读取或生成 deviceId(持久化到 config.json 复用)。
- * 用于活动优惠券防刷审计 + 后端识别同设备多钱包。
+ * 读取或生成 deviceId。
+ *
+ * 策略 (用户决定):
+ *   - 已落盘 → 直接返回旧值, 永不覆盖 (重装/MAC 变动不影响, 老用户保留旧 UUID)
+ *   - 首次生成 → 必须用硬件指纹 (IOPlatformUUID / machine-id / csproduct + MAC), 失败 throw
+ *
+ * 上报服务端: 用于活动优惠券防刷审计 + 同设备多钱包识别.
+ * 上报的是 sha256 hash, 用户真实 MAC / 序列号不出本机.
+ *
+ * @throws {Error} code="DEVICE_FINGERPRINT_UNAVAILABLE" 时表示容器/受限环境拿不到硬件信息
  */
 export function getOrCreateDeviceId() {
     const cfg = loadConfig();
     if (cfg.deviceId) return cfg.deviceId;
-    const deviceId = randomUUID();
-    saveConfig({...cfg, deviceId});
-    return deviceId;
+    const fingerprint = getHardwareFingerprint();
+    if (!fingerprint) {
+        const err = new Error(
+            "Cannot compute hardware fingerprint (likely running in a container or restricted env). " +
+            "aigateway requires a stable device id for anti-fraud."
+        );
+        err.code = "DEVICE_FINGERPRINT_UNAVAILABLE";
+        throw err;
+    }
+    saveConfig({ ...cfg, deviceId: fingerprint });
+    return fingerprint;
 }
 
 export function saveConfig(config) {

@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
   author: AEON-Project
   openclaw:
     requires:
@@ -192,7 +192,7 @@ npm install -g @aeon-ai-pay/aigateway
 - 活动期间客户端自动检测钱包是否已领过优惠：未领 → 套餐 6 U 用户**实付 1 USDT** + 服务端 mint 5 个等值 token；已领或活动关闭 → 普通充值 (套餐 = 实付 USDT)
 - 命令执行**前**询问用户，问句里"钱包"必须显式出现，并提示 U 单位：
 
-  > 你想给 **session 钱包** 充值多少 U？（套餐: 6 / 10 / 20 / 50；活动期 1 U = 1 USDT）
+  > 你想给 **session 钱包** 充值多少 U？（套餐: 6 / 10 / 20 / 50）
 
 - 选定后执行：
 

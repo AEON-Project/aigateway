@@ -12,6 +12,8 @@
 export const ERROR_CODES = {
   // ===== User error (exit 1) =====
   WALLET_NOT_CONFIGURED:  { exit: 1, message: "Wallet not configured. Run: aigateway wallet-init" },
+  DEVICE_FINGERPRINT_UNAVAILABLE: { exit: 1, message: "Cannot compute hardware fingerprint (likely a container or restricted env). aigateway requires a stable device id." },
+  DEVICE_ALREADY_CLAIMED: { exit: 1, message: "This device has already claimed the coupon with another wallet." },
   SERVICE_URL_MISSING:    { exit: 1, message: "Service URL not configured." },
   AMOUNT_INVALID:         { exit: 1, message: "Invalid amount." },
   AMOUNT_EXCEEDS_BALANCE: { exit: 1, message: "Requested amount exceeds available balance." },

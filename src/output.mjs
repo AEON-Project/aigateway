@@ -31,18 +31,26 @@ export function isLegacyMode() { return LEGACY_MODE; }
 export function isVerboseMode() { return VERBOSE_MODE; }
 
 /**
- * Emit a success result. Callers should let the function return naturally
- * (do not call process.exit afterwards).
+ * Emit a success result and exit (0).
+ *
+ * 必须主动退出: 否则 WalletConnect SignClient 的 keep-alive / status server timer /
+ * viem 网络连接的 socket idle 会让事件循环非空, Node 进程挂着不退,
+ * 导致调用方 (agent / shell) 看到 "命令完成但 bash 一直没返回".
+ *
+ * 配合 stdout 写入完成: process.exit(0) 触发前先 process.stdout.write callback 确保
+ * envelope JSON 完整刷出 (Node 处理 stdout flush 时同步走完).
+ *
  * @param {string} command - command name, e.g. "sb-invoke" / "wallet-init"
  * @param {object} data - placed under envelope.data
  * @param {object} [legacyShape] - the legacy-mode payload; if omitted, `data` is used
  */
 export function emitOk(command, data, legacyShape) {
-  if (LEGACY_MODE) {
-    console.log(JSON.stringify(legacyShape ?? data, null, 2));
-  } else {
-    console.log(JSON.stringify({ ok: true, command, version: VERSION, data }));
-  }
+  const out = LEGACY_MODE
+    ? JSON.stringify(legacyShape ?? data, null, 2)
+    : JSON.stringify({ ok: true, command, version: VERSION, data });
+  // 直接 process.stdout.write + 等 drain 而不是 console.log, 确保 flush 完成才 exit.
+  // \n 跟 console.log 保持一致.
+  process.stdout.write(out + "\n", () => process.exit(0));
 }
 
 /**

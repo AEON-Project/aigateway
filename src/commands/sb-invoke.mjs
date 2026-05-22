@@ -14,7 +14,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import axios from "axios";
 import { createX402Api, decodePaymentResponse, fetchPaymentRequirements, selectAcceptByBalance } from "../x402.mjs";
-import { resolve } from "../config.mjs";
+import { resolve, getOrCreateDeviceId } from "../config.mjs";
 import { getWalletBalance, getAllowance } from "../balance.mjs";
 import { USDT_BSC } from "../constants.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
@@ -149,7 +149,12 @@ export async function invoke(opts) {
 
   const bodyPayload = { model, inputs };
   const bodyParam = encodeURIComponent(JSON.stringify(bodyPayload));
-  const url = `${serviceUrl}/open/ai/x402/skillBoss/create?body=${bodyParam}&appId=${encodeURIComponent(appId)}`;
+  // 上报 deviceId 供服务端审计 + 风控 (跟 coupon/claim 用的同一个硬件指纹).
+  // 拿不到 (硬件指纹失败) 也不阻塞调用, 服务端按缺失处理.
+  let deviceId = "";
+  try { deviceId = getOrCreateDeviceId(); } catch { /* container/restricted env, skip */ }
+  const url = `${serviceUrl}/open/ai/x402/skillBoss/create?body=${bodyParam}&appId=${encodeURIComponent(appId)}`
+    + (deviceId ? `&deviceId=${encodeURIComponent(deviceId)}` : "");
 
   logInfo(`Invoking ${model}...`);
   logInfo("Fetching payment requirements...");
