@@ -36,6 +36,16 @@ export async function checkCouponStatus({ serviceUrl, userAddress, campaignId })
   try {
     const resp = await axios.get(url, { timeout: 10_000 });
     const envelope = resp.data;
+    // envelope.code != "0" → 服务端全局异常兜底,透传 msg
+    if (envelope && envelope.code !== "0" && envelope.success !== true) {
+      return {
+        ok: false,
+        code: "SERVER_ERROR",
+        errorMsg: envelope.msg || envelope.message || "Server returned non-zero code",
+        serverCode: envelope.code,
+        traceId: envelope.traceId,
+      };
+    }
     const result = envelope?.model || envelope?.data || envelope;
     return {
       ok: true,
@@ -76,11 +86,24 @@ export async function claimCoupon({ serviceUrl, userAddress, deviceId, appId, ca
 
   try {
     const resp = await axios.post(url, body, {
-      timeout: 15_000,
+      // 服务端 mint 同步等待 receipt,最长 60s;客户端给 90s 留余量
+      timeout: 90_000,
       headers: { "Content-Type": "application/json" },
     });
-    // 服务端约定:HTTP 200 + APIResponse 包装 + data 字段 = CouponClaimResult
+    // 服务端响应两种形态:
+    //   业务正常:{ code: "0", msg: "success", model: CouponClaimResult{ok, code, ...} }
+    //   全局异常:{ code: "1", msg: "<maintenance / 真实错误>", model: null }  ← Spring 兜底
     const envelope = resp.data;
+    // envelope.code != "0" → 服务端全局异常,把 envelope.msg 透传给上层
+    if (envelope && envelope.code !== "0" && envelope.success !== true) {
+      return {
+        ok: false,
+        code: "SERVER_ERROR",
+        errorMsg: envelope.msg || envelope.message || "Server returned non-zero code",
+        serverCode: envelope.code,
+        traceId: envelope.traceId,
+      };
+    }
     const result = envelope?.model || envelope?.data || envelope;
     if (result?.ok) {
       return {

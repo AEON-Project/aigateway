@@ -124,7 +124,7 @@ Never hard-code model ids in long-lived prompts — vendors rename, the gateway 
 `sb invoke` validates `--inputs` against the live catalog **before** any payment round-trip. Inspect `error.errors[]` — each item carries `{ field, kind, message }`, with `kind ∈ {missing, enum, type, range}`. `error.required[]` lists every required field for the chosen model.
 
 Common cases:
-- `video` model without `inputs.duration_seconds` (1–300).
+- `video` / music model without `inputs.duration` (1–300).
 - `stt` model without `inputs.duration_minutes` (1–360).
 - `tts` model without `inputs.text`.
 - Image `aspect_ratio` not in the enum (e.g. `"square"` instead of `"1:1"`).

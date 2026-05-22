@@ -138,6 +138,16 @@ sb
   });
 
 program
+  .command("coupon-claim")
+  .description("AEON x BNB Chain AI Agent Campaign — check / claim the activity coupon token")
+  .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
+  .option("--campaign-id <id>", "Campaign ID (defaults to server-side ACTIVE campaign)")
+  .action(async (opts) => {
+    const { couponClaim } = await import("../src/commands/coupon-claim.mjs");
+    return couponClaim(opts);
+  });
+
+program
   .command("clean")
   .description("Remove skill, uninstall package, and clear npm/npx cache")
   .action(async () => {

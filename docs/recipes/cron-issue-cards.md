@@ -75,7 +75,7 @@ Example `weekly-image.json`:
 | `INSUFFICIENT_USDT` / `TOPUP_REQUIRED` | Wallet ran dry. Headless cron cannot scan a QR. | Top up via `aigateway wallet-topup --amount <n>` on a workstation. |
 | `INSUFFICIENT_BNB` | BNB depleted (only matters for `wallet-withdraw` / re-approve). | Run `aigateway wallet-gas` interactively on a workstation. |
 | `INVALID_MODEL_ID` | The model id was renamed or removed upstream. | Run `aigateway sb tools` and update the wrapper's `--model`. |
-| `MISSING_INPUTS` / `INVALID_INPUTS` | Inputs file drifted from the schema (e.g. missing `duration_seconds` for video / `duration_minutes` for STT). | Re-pull `sb tools --model <id>` and fix the JSON. |
+| `MISSING_INPUTS` / `INVALID_INPUTS` | Inputs file drifted from the schema (e.g. missing `duration` for video / `duration_minutes` for STT). | Re-pull `sb tools --model <id>` and fix the JSON. |
 | `MODEL_PRICING_NOT_CONFIGURED` | Upstream removed the model from the pricing config. | Pick another model. |
 | `SERVICE_UNAVAILABLE` / `PAYMENT_FETCH_FAILED` | Upstream outage. | Cron will retry next tick. Alert if 3+ consecutive failures. |
 | `PAYMENT_TIMEOUT` | WalletConnect was unexpectedly triggered (should not happen once approve is on-chain). | Run an interactive `aigateway wallet-topup` once to re-fund / re-approve. |

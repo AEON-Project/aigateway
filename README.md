@@ -92,7 +92,7 @@ Build agents that don't just think — but **transact**.
 | Category | Pricing Unit | Description |
 | --- | --- | --- |
 | `image` | `per_image` | Image generation / editing / upscaling / background removal |
-| `video` | `per_second` | Video generation (requires `duration_seconds`) |
+| `video` | `per_second` | Video generation (requires `duration`) |
 | `tts` | `per_1k_chars` | Text-to-speech / sound effect generation |
 | `stt` | `per_minute` | Speech-to-text (requires `duration_minutes`) |
 | `search` | `per_request` | Web search / map search |
@@ -202,7 +202,7 @@ Global flags: `--legacy-output` (legacy JSON shape), `--verbose`, `--quiet`.
 
 **Usage-based pricing constraints** (enforced by `sb invoke` client-side preflight):
 
-- `video`: must include `duration_seconds` (billed per second)
+- `video` / music: must include `duration` (billed per second)
 - `stt`: must include `duration_minutes` (billed per minute)
 
 ---
@@ -217,7 +217,7 @@ Global flags: `--legacy-output` (legacy JSON shape), `--verbose`, `--quiet`.
 - **Gasless payments**: `sb invoke` is purely EIP-712 signing end-to-end; the server pays the gas for the on-chain USDT transfer.
 - **Dynamic pricing**: the server computes `priceUnit × inputs usage` in real time:
   - Image: `per_image × num_outputs`
-  - Video: `per_second × duration_seconds`
+  - Video / music: `per_second × duration × num_outputs`
   - TTS: `per_1k_chars × len(text)/1000`
   - Transcription: `per_minute × duration_minutes`
   - Embedding: `per_million_tokens × len(input)/4/1M`
