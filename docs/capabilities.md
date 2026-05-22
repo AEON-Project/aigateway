@@ -34,16 +34,6 @@
 | `fish_audio/s1` | $0.01/1K 字符 | quality | 超快多语言 TTS,30+ 语言,自然音色 |
 | `fish_audio/s2-pro` | $0.01/1K 字符 | quality | 高质量 TTS + 声音克隆(reference_id),100+ 角色 |
 
-### 🧬 (3) 按百万 token — 嵌入字符长度 `per_million_tokens`
-
-**分类用途**:把文本编码成向量(检索 / 相似度 / RAG)。服务端按 `len(input) / 4 / 1M` 估算 token,客户端不需要前置询问用量,直接传 `inputs.input` 即可。
-
-| Model | 单价 | tier | 用途 |
-|---|---|---|---|
-| `openai/text-embedding-3-small` | $0.10/M tokens | price | 轻量嵌入,1536 维,5x 便宜,适合一般检索 |
-| `openai/text-embedding-3-large` | $0.26/M tokens | balanced | OpenAI 最强嵌入,3072 维,高精度检索 / 聚类 |
-| `document/retrieve-knowledge` | $0.26/M tokens | quality | 文档信息抽取,给 AI Agent 做 RAG 用 |
-
 ---
 
 ## 维度 2:按次计费(fixed-fee)— 调一次扣一次
@@ -198,10 +188,9 @@
 |---|---|---|---|---|
 | **用量计费** | `per_second` | 1 (video) | 2 | `duration` |
 | **用量计费** | `per_1k_chars` | 1 (tts 子集) | 2 | `text` |
-| **用量计费** | `per_million_tokens` | 1 (embeddings) | 3 | `input` |
 | **次计费** | `per_image` | 1 (image) | 19 | (optional `num_outputs`) |
 | **次计费** | `per_request` | 10 (其它) | 52 | 各 model 自有 inputs |
-| **合计** | | **14 categories** | **78 models** | |
+| **合计** | | **13 categories** | **75 models** | |
 
 ---
 
@@ -215,7 +204,7 @@ aigateway sb tools
 
 # 单类别(含 defaultInputsSchema)
 aigateway sb tools --category video
-aigateway sb tools --category embeddings
+aigateway sb tools --category tts
 
 # 按 tier 过滤(price / balanced / quality)
 aigateway sb tools --tier price

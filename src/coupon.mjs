@@ -50,7 +50,7 @@ export async function checkCouponStatus({ serviceUrl, userAddress, campaignId })
     return {
       ok: true,
       claimed: !!result?.claimed,
-      campaignActive: result?.campaignActive === true,   // 仅当服务端明确返回 true 才视为活动开启
+      campaignActive: result?.campaignActive === true,   // only treat as active when server explicitly returns true
       campaignId: result?.campaignId,
       mintStatus: result?.mintStatus || null,
       mintTxHash: result?.mintTxHash || null,

@@ -68,10 +68,10 @@ export async function initWallet(opts) {
 
     try {
       const bal = await getCombinedBalance(config.privateKey, { campaignActive });
-      usdt = bal.usdt;          // 已是合并后总 U (campaignActive=true 含 BNA, 否则纯 USDT)
+      usdt = bal.usdt;          // already merged U total (incl. BNA when campaignActive, else pure USDT)
       usdtNum = parseFloat(usdt);
       bnb = bal.bnb;
-      logInfo(`Balance: ${usdt} U, ${bnb} BNB${campaignActive ? "  (含活动 BNA)" : ""}`);
+      logInfo(`Balance: ${usdt} U, ${bnb} BNB${campaignActive ? "  (incl. campaign BNA)" : ""}`);
       allowance = await getAllowance(config.address);
       logInfo(`Allowance: ${allowance === 0n ? "0 (approve required)" : "already approved"}`);
     } catch (e) {

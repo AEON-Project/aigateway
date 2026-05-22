@@ -189,12 +189,12 @@ export async function invoke(opts) {
   let needGas = false;
   let sessionAddress;
   let topupAmount = null;
-  let balanceInitialUsdt = null;      // 统一 U (= USDT + BNA when campaignActive, USDT only otherwise)
+  let balanceInitialUsdt = null;      // unified U (= USDT + BNA when campaignActive, USDT only otherwise)
   let balanceBeforeChargeUsdt = null;
   let campaignActive = false;
   let paymentReq;
   let requiredUsdt;
-  let paymentMethod = "USDT"; // "USDT" | "COUPON" — 内部诊断用
+  let paymentMethod = "USDT"; // "USDT" | "COUPON" — internal diagnostic
 
   try {
     const bal = await getWalletBalance(privateKey, { withToken: true });
@@ -210,7 +210,7 @@ export async function invoke(opts) {
     balanceBeforeChargeUsdt = combinedU;
 
     logInfo(`Wallet: ${address}`);
-    logInfo(`Balance: ${combinedU} U${campaignActive ? "  (含 BNA)" : ""}, ${bnb} BNB`);
+    logInfo(`Balance: ${combinedU} U${campaignActive ? "  (incl. BNA)" : ""}, ${bnb} BNB`);
 
     // 按余额 + 活动状态选币种 (campaignActive=false 强制 USDT, 不选 BNA)
     const selection = selectAcceptByBalance(
@@ -448,11 +448,11 @@ export async function invoke(opts) {
       // unwrap server envelope: { payer, transaction, data: <upstream-response> } → <upstream-response>
       raw: response.data?.data ?? response.data,
       paymentResponse,
-      paymentMethod,           // "USDT" | "COUPON" — 内部诊断用; 用户视角下 token 与 USDT 等价 U
+      paymentMethod,           // "USDT" | "COUPON" — internal diagnostic; users see unified U (token == USDT 1:1)
       balance: {
-        initial: balanceInitialUsdt,    // 调用前 U 总额
-        before: balanceBeforeChargeUsdt, // 扣款前 U 总额 (经过 topup 后)
-        after: balanceAfterUsdt,         // 扣款后 U 总额
+        initial: balanceInitialUsdt,    // U total before invocation
+        before: balanceBeforeChargeUsdt, // U total before charge (after topup)
+        after: balanceAfterUsdt,         // U total after charge
         charged: requiredUsdt,
         topup: topupAmount,
       },

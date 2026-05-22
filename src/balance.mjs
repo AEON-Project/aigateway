@@ -138,12 +138,12 @@ export async function getCombinedBalance(privateKey, opts = {}) {
     : bal.usdt;
   return {
     address: bal.address,
-    usdt: combinedU,        // 统一 U 总额 (对外字段)
-    usdtRaw: bal.usdtRaw,   // 纯 USDT raw (内部用)
-    usdtOnly: bal.usdt,     // 纯 USDT 字符串 (内部用)
+    usdt: combinedU,        // unified U total (public field)
+    usdtRaw: bal.usdtRaw,   // raw USDT (internal)
+    usdtOnly: bal.usdt,     // USDT-only string (internal)
     bnb: bal.bnb,
     bnbRaw: bal.bnbRaw,
-    token: tokenStr,        // BNA 余额 (campaignActive=false 时为 "0")
+    token: tokenStr,        // BNA balance ("0" when campaignActive=false)
     tokenRaw,
     campaignActive,
   };

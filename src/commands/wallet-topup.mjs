@@ -92,11 +92,11 @@ export async function topup(opts) {
 
   // 拿到 campaignActive 后再合并余额 (campaignActive=false 时 token 不计入 U)
   const bal = await getCombinedBalance(privateKey, { campaignActive });
-  const usdt = bal.usdt;          // 统一 U 总额
+  const usdt = bal.usdt;          // unified U total
   const usdtNum = parseFloat(usdt);
   const bnb = bal.bnb;
   const bnbRaw = bal.bnbRaw;
-  logInfo(`Balance:   ${usdt} U, ${bnb} BNB${campaignActive ? "  (含 BNA)" : ""}`);
+  logInfo(`Balance:   ${usdt} U, ${bnb} BNB${campaignActive ? "  (incl. BNA)" : ""}`);
 
   logInfo("Checking facilitator allowance...");
   let allowance;

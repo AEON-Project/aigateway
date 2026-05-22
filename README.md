@@ -99,7 +99,6 @@ Build agents that don't just think — but **transact**.
 | `sms` | `per_request` | SMS / OTP / email verification |
 | `document` | `per_request` | Document parsing (PDF / DOCX → Markdown) |
 | `ui_generation` | `per_request` | UI / prototype / slide deck generation |
-| `embeddings` | `per_million_tokens` | Text embedding vectors |
 | `financial` | `per_request` | Stock / forex / crypto / financial news |
 | `news` | `per_request` | News APIs |
 | `utility` | `per_request` | Domain / QR code / geo / dictionary and other utility APIs |

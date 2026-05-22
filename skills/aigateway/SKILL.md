@@ -4,7 +4,7 @@ description: >
   Trigger this skill when the user wants to call AI tools via the x402 protocol,
   paying per call with USDT on BSC — 200+ tool endpoints: image / video / audio (TTS) /
   transcription (STT) / web search / web scraping / social & business data / email / SMS /
-  document parsing / UI & slide generation / embeddings / finance / news / geo / utility APIs.
+  document parsing / UI & slide generation / finance / news / geo / utility APIs.
 
   This skill **does NOT expose chat / LLM** — the agent is already an LLM and has no need
   to pay another LLM through x402.
@@ -19,7 +19,6 @@ description: >
   - "Send an email to … / send an SMS / OTP code"
   - "Parse this PDF / DOCX / convert document to markdown"
   - "Generate a landing page / mobile UI / slide deck"
-  - "Embed these texts as vectors"
   - "Look up crypto / stock / FX / weather data"
   - "Pull <platform> profile" (Twitter / Instagram / LinkedIn / Amazon / Yelp …)
   - "What can I do?"
@@ -27,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.3.1"
+  version: "0.3.2"
   author: AEON-Project
   openclaw:
     requires:
@@ -46,7 +45,7 @@ compatibility: Requires Node.js >= 25 and npm
 
 ## Core Entry Point
 
-**`aigateway sb invoke --model <id> --inputs <json>`** — the **only** x402 paid call surface. Covers all AI tool capabilities (image / video / audio / TTS / STT / web search / scraper / social data / email / SMS / document / UI / embeddings / finance / news / geo / utility APIs).
+**`aigateway sb invoke --model <id> --inputs <json>`** — the **only** x402 paid call surface. Covers all AI tool capabilities (image / video / audio / TTS / STT / web search / scraper / social data / email / SMS / document / UI / finance / news / geo / utility APIs).
 
 The full tool catalog (each `category` carries `agentTrigger` / `defaultInputsSchema`; each `model` carries `id` / `useCase` / `tier` / optional `inputsOverride`) is maintained centrally on the server and fetched live every time. **No local cache** — the server is the single source of truth, new models and schema changes take effect immediately.
 
@@ -268,7 +267,6 @@ Bucket the user's intent into one of these rows:
 | Send SMS / OTP | `sms` | `prelude/notify-send`, `prelude/verify-send` | `sb invoke --model <id>` |
 | Parse PDF / DOCX | `document` | `reducto/parse`, `marker` | `sb invoke --model <id>` |
 | Generate landing page / mobile UI / slides | `ui_generation` | `stitch/generate-desktop`, `gamma/generation` | `sb invoke --model <id>` |
-| Embeddings | `embeddings` | `openai/text-embedding-3-large` | `sb invoke --model <id>` |
 | Crypto / stock / FX / weather / utility data | `utility` | `alphavantage/quote`, `openmeteo/*`, etc. | `sb invoke --model <id>` |
 | Unsure what's possible | (guidance) | — | Quote the table above, tell the user what's possible |
 
@@ -293,7 +291,6 @@ Every model in the catalog has a `priceUnit` field. **The server strictly valida
 | `per_second` (video / music) | `inputs.duration` | **Required** (1–300); missing → `MISSING_DURATION` 400 | **Yes — "Billed per second. How many seconds? default 5"** |
 | `per_1k_chars` (tts) | length of `inputs.text` | text required and non-empty; missing → `MISSING_TEXT` 400 | No (text comes from the user's wording) |
 | `per_minute` (stt) | `inputs.duration_minutes` | **Required** (1–360); missing → `MISSING_DURATION` 400 | **Yes — "Billed per minute. How long is this audio in minutes?"** |
-| `per_million_tokens` (embeddings) | `len(inputs.input) / 4` | input required and non-empty; missing → `MISSING_INPUT` 400 | No (server estimates tokens from char length) |
 
 ⚠️ **The server's strict check exists to protect billing**:
 - Missing `duration` → server can't charge by real length → reject
@@ -330,7 +327,6 @@ Press Enter or type 1 to use the recommended; or enter the row number / full mod
 | `per_second` | `/sec` | `duration × num_outputs` (default 5×1) | $0.20 × **6 sec** × 1 = **$1.20** |
 | `per_1k_chars` | `/1K chars` | `len(text) / 1000` | $0.05 × **2.5K chars** = **$0.125** |
 | `per_minute` | `/min` | `duration_minutes` or 1 | $0.02 × **3 min** = **$0.06** |
-| `per_million_tokens` | `/M tokens` | `len(input) / 4 / 1M` | $0.26 × **0.5M tokens** ≈ **$0.13** |
 
 > Prices are **estimates**. The **exact amount** is computed server-side by `model.priceUnit × inputs quantity` and returned in the x402 first stage (402 response); the CLI shows the actual charge on the `💰 Charged` line.
 
@@ -497,7 +493,7 @@ Then summarize the actual result in **one or two sentences** (top 3 search hits,
 | `PAYMENT_FETCH_FAILED` | 3 | Couldn't fetch payment requirements; network issue |
 | `MISSING_DURATION` | 1 | Server strict check: video / music missing `inputs.duration`, or stt missing `inputs.duration_minutes`. **Must ask the user upfront** before calling |
 | `INVALID_DURATION` | 1 | Server strict check: duration out of range (video 1–300 sec / stt 1–360 min) |
-| `MISSING_TEXT` / `MISSING_INPUT` | 1 | TTS / embeddings required field is empty |
+| `MISSING_TEXT` | 1 | TTS required `text` field is empty |
 | `INVALID_NUM_OUTPUTS` | 1 | `inputs.num_outputs` out of range (1–10) |
 | `MODEL_PRICING_NOT_CONFIGURED` | 1 | Server has no pricing configured for this model; tell the user it's unavailable and suggest another (or escalate to ops to add the catalog) |
 | `INVALID_BODY` | 1 | Server rejected the body format; usually a CLI bug — file a report |
@@ -602,7 +598,7 @@ Full schema: [docs/output-schema.md](../../docs/output-schema.md), [docs/exit-co
 | --- | --- |
 | First entry / unknown state | `wallet-init` (chain `wallet-topup` if needsTopup) |
 | Top-up / fund wallet | `wallet-topup --amount <n>` |
-| Any x402 paid tool (image / video / audio / search / scrape / email / SMS / document / UI / embeddings / finance / utility …) | **First `aigateway sb tools` for catalog**, then `sb invoke --model <id> --inputs '<json>'` |
+| Any x402 paid tool (image / video / audio / search / scrape / email / SMS / document / UI / finance / utility …) | **First `aigateway sb tools` for catalog**, then `sb invoke --model <id> --inputs '<json>'` |
 | Balance lookup | `wallet-balance` |
 | Withdraw | `wallet-withdraw [--to <addr>] [--amount <n>]` |
 | Refill BNB (for withdraw) | `wallet-gas [--amount <bnb>]` |
