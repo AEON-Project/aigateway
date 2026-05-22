@@ -14,7 +14,7 @@
  *           "CAMPAIGN_QUOTA_EXHAUSTED" | "CAMPAIGN_NOT_ACTIVE" | "CAMPAIGN_NOT_FOUND" |
  *           "MINT_FAILED" | "STATUS_NETWORK_ERROR" | "CLAIM_NETWORK_ERROR",
  *     tokenAmount: 5,
- *     tokenAddress: "0x2c9E...",
+ *     tokenAddress: "0x76671c...",
  *     txHash: "0x..." | null,
  *     campaignId: "...",
  *     errorMsg: "..." | null,

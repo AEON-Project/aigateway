@@ -82,7 +82,7 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "coupon": {
     "claimed": true,
     "campaignId": "AEON_BNB_2026Q2",
-    "tokenAddress": "0x2c9E7Ff908Abde7Ca6dfA0BFF296d8982Ae7Ad4b",
+    "tokenAddress": "0x76671cD1E9d07527A25632ce88151480e529263b",
     "tokenAmount": "5",
     "txHash": "0x..."
   } | {
@@ -126,7 +126,7 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "raw": { /* upstream vendor response, unwrapped from { payer, transaction, data } */ },
   "paymentResponse": { "txHash": "0x...", "payer": "0x...", "...": "..." },
   "paymentMethod": "USDT" | "COUPON",
-  "paymentToken": "0x55d398...USDT" | "0x2c9E7Ff...coupon",
+  "paymentToken": "0x55d398...USDT" | "0x76671cD...BNA",
   "balance": {
     "initial": "1.0",
     "before": "1.0",
