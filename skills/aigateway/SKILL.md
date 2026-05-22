@@ -1,28 +1,29 @@
 ---
 name: aigateway
 description: >
-  当用户希望通过 x402 协议、用 BSC 上的 USDT 按次结算调用 AI 工具时
-  触发此 skill —— 200+ 个工具端点：图像 / 视频 / 音频 (TTS) / 转录 (STT) / 网络搜索 /
-  网页抓取 / 社交与商业数据 / 邮件 / 短信 / 文档解析 / UI 与演示生成 / 嵌入向量 /
-  金融 / 新闻 / 地理位置 / 实用 API。
+  Trigger this skill when the user wants to call AI tools via the x402 protocol,
+  paying per call with USDT on BSC — 200+ tool endpoints: image / video / audio (TTS) /
+  transcription (STT) / web search / web scraping / social & business data / email / SMS /
+  document parsing / UI & slide generation / embeddings / finance / news / geo / utility APIs.
 
-  本 skill **不暴露 chat / LLM** —— Agent 自身已是 LLM，无需通过 x402 付费调另一个 LLM。
+  This skill **does NOT expose chat / LLM** — the agent is already an LLM and has no need
+  to pay another LLM through x402.
 
-  触发意图示例：
-  - "生成一张图 / 画个 … / 渲染场景"
-  - "生成视频 / 动画 / 短片"
-  - "把这段文字转语音 / 合成声音"
-  - "转录这段录音 / 语音转文字"
-  - "搜一下 … / 查询信息"
-  - "抓这个 URL / 从这个页面提取数据"
-  - "发邮件给 … / 发短信 / OTP 验证码"
-  - "解析这个 PDF / DOCX / 把文档转 markdown"
-  - "生成落地页 / 移动 UI / 幻灯片"
-  - "给这些文本做嵌入向量"
-  - "查加密货币 / 股票 / 外汇 / 天气数据"
-  - "拉 <平台> 资料"（Twitter / Instagram / LinkedIn / Amazon / Yelp …）
-  - "我能做什么？"
-  - "充值钱包 / 查余额 / 提现"
+  Example trigger intents:
+  - "Generate an image / draw … / render a scene"
+  - "Generate a video / animation / short clip"
+  - "Turn this text into speech / synthesize a voice"
+  - "Transcribe this recording / speech to text"
+  - "Search for … / look up info"
+  - "Scrape this URL / extract data from this page"
+  - "Send an email to … / send an SMS / OTP code"
+  - "Parse this PDF / DOCX / convert document to markdown"
+  - "Generate a landing page / mobile UI / slide deck"
+  - "Embed these texts as vectors"
+  - "Look up crypto / stock / FX / weather data"
+  - "Pull <platform> profile" (Twitter / Instagram / LinkedIn / Amazon / Yelp …)
+  - "What can I do?"
+  - "Top up wallet / check balance / withdraw"
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
@@ -36,119 +37,119 @@ metadata:
     primaryEnv: AIGATEWAY_SERVICE_URL
     user-invocable: true
     disable-model-invocation: false
-compatibility: 需要 Node.js >= 25 和 npm
+compatibility: Requires Node.js >= 25 and npm
 ---
 
 # AEON AI Gateway for AI Agents
 
-**AEON AI Gateway** = "**x402 协议钱包工具统一付费入口**" 的 CLI。让 AI Agent 用 BSC 上的 USDT，按次结算地调用 ≈200+ 个 AI 工具与服务（**不含 chat**）。
+**AEON AI Gateway** = a CLI that acts as "**the unified paid entry point for x402-protocol wallet tools**". It lets AI agents call ~200+ AI tools and services on a pay-per-call basis using USDT on BSC (**chat not included**).
 
-## 核心入口
+## Core Entry Point
 
-**`aigateway sb invoke --model <id> --inputs <json>`** —— **唯一的 x402 付费调用入口**。覆盖全部 AI 工具能力（图像 / 视频 / 音频 / TTS / STT / 网络搜索 / 网页抓取 / 社交数据 / 邮件 / 短信 / 文档 / UI / 嵌入 / 金融 / 新闻 / 地理位置 / 实用 API）。
+**`aigateway sb invoke --model <id> --inputs <json>`** — the **only** x402 paid call surface. Covers all AI tool capabilities (image / video / audio / TTS / STT / web search / scraper / social data / email / SMS / document / UI / embeddings / finance / news / geo / utility APIs).
 
-完整工具索引（每个 `category` 含 `agentTrigger` / `defaultInputsSchema`；每个 `model` 含 `id` / `useCase` / `tier` / 可选 `inputsOverride`）由服务端集中维护，每次实时拉取。**无本地缓存** —— 服务端是 single source of truth，model 新增 / schema 改动立即生效。
+The full tool catalog (each `category` carries `agentTrigger` / `defaultInputsSchema`; each `model` carries `id` / `useCase` / `tier` / optional `inputsOverride`) is maintained centrally on the server and fetched live every time. **No local cache** — the server is the single source of truth, new models and schema changes take effect immediately.
 
-**Agent 在 Phase 3.2 选 model 时**，**优先用 CLI 自带的过滤参数**，避免自己写代码解析 list：
+**When the agent picks a model in Phase 3.2**, **prefer the CLI's built-in filter flags** rather than writing list-parsing code yourself:
 
 ```bash
-# 推荐：CLI 端过滤，直接拿你要的
-aigateway sb tools --model replicate/black-forest-labs/flux-schnell   # 单 model + effectiveSchema
-aigateway sb tools --category image                                   # 单类别（含所有 models 与 defaultInputsSchema）
-aigateway sb tools --category image --tier price                      # 按 tier 过滤
-aigateway sb tools --tier quality                                     # 所有类别中 quality 档
+# Recommended: CLI-side filtering, returns exactly what you need
+aigateway sb tools --model replicate/black-forest-labs/flux-schnell   # single model + effectiveSchema
+aigateway sb tools --category image                                   # single category (all models + defaultInputsSchema)
+aigateway sb tools --category image --tier price                      # filter by tier
+aigateway sb tools --tier quality                                     # quality tier across all categories
 
-# 备选：全量 catalog（少用，主要用于探索）
+# Fallback: full catalog (rarely needed, mainly for exploration)
 aigateway sb tools
 ```
 
-**如果必须自己解析**（jq 推荐）：
+**If you must parse it yourself** (jq recommended):
 
 ```bash
 aigateway sb tools | jq '.data.categories[] | select(.key=="image") | .models[]'
 aigateway sb tools | jq '.data.categories[].models[] | select(.id=="<model_id>")'
 ```
 
-⚠️ **不要在 Python list 上调 `.find()`** —— list 没有这个方法。用 `next(m for m in ...)` 或 dict 索引化。但通常**根本不需要**自己解析，用 `aigateway sb tools --model X` 就够了。
+⚠️ **Do not call `.find()` on a Python list** — lists have no such method. Use `next(m for m in ...)` or build a dict. But you usually **don't need to parse anything**; `aigateway sb tools --model X` is enough.
 
-每次都从服务端实时获取，无本地缓存。
+Every call fetches the catalog live from the server. No local cache.
 
-**价格在 catalog 里**：每个 model 含 `price`（USD 数值）+ `priceUnit`（`per_request` / `per_second` / `per_1k_chars` / `per_minute` / `per_image` / `per_million_tokens`），Agent 用这两个字段给用户**列候选 + 展示预估总价**（详见 Phase 3.2）。最终精确扣款金额由 x402 第一阶段（402 响应）返回，CLI 在 `💰 Charged` 行展示。
+**Prices live in the catalog**: each model has `price` (USD numeric) + `priceUnit` (`per_request` / `per_second` / `per_1k_chars` / `per_minute` / `per_image` / `per_million_tokens`). The agent uses these two fields to **list candidates + show estimated total** to the user (see Phase 3.2). The final exact charge is returned by the x402 first stage (402 response), and the CLI prints it on the `💰 Charged` line.
 
-## 钱包模型（与 x402 的关系）
+## Wallet Model (Relationship with x402)
 
-所有付费调用共用同一个 **session-key 钱包**，通过 WalletConnect 充值一次即可长期复用：
+All paid calls share the same **session-key wallet**, which is funded once via WalletConnect and reused indefinitely:
 
-> ⚡ **两步钱包就绪，然后按次付费**：
-> - **`wallet-init`** *(本地、免费)*：检查 / 创建本地 session-key，返回 ready / created / needsTopup 状态
-> - **`wallet-topup`** *(WalletConnect、一次性)*：充值 USDT（最低 5 USDT，预设 5/10/20/50）+ 0.0003 BNB approve gas，session-key 广播 `ERC20.approve(facilitator, MaxUint256)`。后续付费调用全部复用授权额度并 gasless
-> - **付费调用**（`sb invoke`）：纯 EIP-712 签名 → 服务端代发 USDT 转账（服务端付 gas）。余额不足时自动回落 `wallet-topup` 流程
-> - **`wallet-withdraw`**：session-key 直接链上发起 ERC20 + BNB 转账 —— 需少量 BNB 用作 gas
-> - **`wallet-gas`**：仅转 BNB（`wallet-withdraw` 报 "No BNB for gas" 时使用）
+> ⚡ **Two-step wallet readiness, then pay-per-call**:
+> - **`wallet-init`** *(local, free)*: check / create the local session-key, return ready / created / needsTopup status
+> - **`wallet-topup`** *(WalletConnect, one-time)*: top up USDT (min 5 USDT, presets 5/10/20/50) + 0.0003 BNB for approve gas, session-key broadcasts `ERC20.approve(facilitator, MaxUint256)`. Subsequent paid calls all reuse this allowance and are gasless
+> - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance it auto-falls back to the `wallet-topup` flow
+> - **`wallet-withdraw`**: session-key broadcasts ERC20 + BNB transfer on-chain — requires a small BNB for gas
+> - **`wallet-gas`**: BNB-only transfer (used when `wallet-withdraw` reports "No BNB for gas")
 
 ---
 
-# 🎯 Agent 决策流程（5 阶段）
+# 🎯 Agent Decision Flow (5 Phases)
 
-"**识别类别 → 选模型 → x402 调用**" 的决策思维链（**验参数已内置到 `sb invoke`**，Agent 不需要单独做），前置 aigateway 的"钱包预检 / 充值"，后置"渲染 / 余额 / 提现"，共 5 个阶段：
+The "**identify category → pick model → x402 call**" decision chain (**input validation is built into `sb invoke`**, the agent doesn't need to redo it), prefixed by aigateway's "wallet pre-check / top-up" and suffixed by "render / balance / withdraw" — 5 phases total:
 
 ```
-Phase 1:   钱包预检           ← aigateway 独有，所有调用前必跑
+Phase 1:   Wallet pre-check            ← aigateway-specific, must run before every call
    ↓
-Phase 1.B: 活动优惠券领取     ← coupon-claim,wallet-init 之后必跑(同步阻塞)
+Phase 1.B: Activity coupon claim       ← coupon-claim, must run after wallet-init (sync blocking)
    ↓
-Phase 2:   钱包充值（条件）   ← needsTopup=true 或用户主动充值
+Phase 2:   Wallet top-up (conditional) ← when needsTopup=true or the user explicitly asks
    ↓
-Phase 3:   识别类别 + 选模型  ← Agent 决策
+Phase 3:   Identify category + pick model ← agent decision
    ↓
-Phase 4:   x402 支付调用      ← aigateway 的 USDT/EIP-712 结算入口（CLI 内置 inputs 校验兜底）
+Phase 4:   x402 paid call              ← aigateway's USDT/EIP-712 settlement entry (with built-in inputs validation)
    ↓
-Phase 5:   渲染响应 / 余额 / 提现 ← aigateway 收尾
+Phase 5:   Render response / balance / withdraw ← aigateway wrap-up
 ```
 
-## Opening Line（必须按字面输出）
+## Opening Line (must be output verbatim)
 
-每次首次进入此 skill，输出这一行（**英文原文，不要翻译**）：
+The very first time the user enters this skill, output this single line (**English original, do NOT translate**):
 
 > Let me check the environment first.
 
-然后**立即**进入 Phase 1。
+Then **immediately** enter Phase 1.
 
 ---
 
-## Phase 1: 钱包预检（无条件运行）
+## Phase 1: Wallet Pre-Check (unconditional)
 
-无论用户意图为何，**永远**先执行：
+Regardless of user intent, **always** run first:
 
 ```bash
 aigateway wallet-init
 ```
 
-输出第一行（**按字面**）：
+First output line (**verbatim**):
 
 ```
 > Pre-check in progress...
 ```
 
-### 如果 `aigateway` 没找到（exit 127 / "command not found"）
+### If `aigateway` is not found (exit 127 / "command not found")
 
-CLI 在本机还没装。按字面输出：
+The CLI isn't installed on this machine. Output verbatim:
 
 ```
 > Installing aigateway...
 ```
 
-然后**前台**运行（30–60 秒，**不要**后台）：
+Then run in the **foreground** (30–60s, **do not** background):
 
 ```bash
 npm install -g @aeon-ai-pay/aigateway
 ```
 
-完成后重新跑 `aigateway wallet-init`。
+When done, re-run `aigateway wallet-init`.
 
-### 成功响应（envelope）
+### Success response (envelope)
 
-`envelope.data` 形状：
+`envelope.data` shape:
 
 ```json
 {
@@ -167,46 +168,46 @@ npm install -g @aeon-ai-pay/aigateway
 }
 ```
 
-### 决策树
+### Decision tree
 
-| 字段 | 动作 |
+| Field | Action |
 | --- | --- |
-| `created: true` | 输出 "正在自动创建你的专属钱包..." + "{addr前3}...{last4} Ready." |
-| `created: false`, `ready: true` | 输出 "{addr前3}...{last4} Ready." |
-| **`needsTopup: true`** | **立即跳到 Phase 2(优惠会嵌入在充值流程里)。** 用 envelope 里的 `presets` / `minTopup` |
-| `needsTopup: false` | 钱包就绪,继续进 Phase 3 调用 |
+| `created: true` | Output "Auto-creating your dedicated wallet..." + "{addr first 3}...{last 4} Ready." |
+| `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready." |
+| **`needsTopup: true`** | **Jump immediately to Phase 2 (the coupon is embedded inside the top-up flow).** Use `presets` / `minTopup` from the envelope |
+| `needsTopup: false` | Wallet ready, continue to Phase 3 |
 
-> 注: 旧版 SKILL 在 wallet-init 后无条件调 `coupon-claim`. 新版起活动优惠已**嵌入 `wallet-topup`**,只在用户真正充值时一次性完成 → 不再单独调用 `coupon-claim`. 独立命令 `aigateway coupon-claim` 仍保留供运维 / 调试手动重领,Agent 默认不要调.
+> Note: older versions of this SKILL ran `coupon-claim` unconditionally after wallet-init. From the new version on, the activity coupon is **embedded in `wallet-topup`** and only fires the first time the user actually tops up → no more standalone `coupon-claim`. The standalone `aigateway coupon-claim` command stays around for ops / debug manual re-claim; the agent should not call it by default.
 
 ---
 
-## Phase 2: 钱包充值（条件触发，自动嵌入优惠领取）
+## Phase 2: Wallet Top-Up (conditional, with automatic coupon claim)
 
-触发：Phase 1 报 `needsTopup: true`（原因可能是 `first_time` / `low_balance` / `no_approve`），**或**用户明确要求充值。
+Triggered when: Phase 1 reports `needsTopup: true` (reason can be `first_time` / `low_balance` / `no_approve`), **or** the user explicitly asks to top up.
 
-### 金额选择
+### Amount selection
 
-这是**给 session 钱包**充值。措辞必须明确指向钱包（与"调用费用"区分）：
+This is funding **the session wallet**. The wording must explicitly point to the wallet (distinct from "per-call fees"):
 
-- 预设套餐：**6 / 10 / 20 / 50 U**（**U** 是用户视角的统一计价单位，活动期间 1 U = 1 USDT 等价；CLI 内部已自动处理实付）
-- 活动期间客户端自动检测钱包是否已领过优惠：未领 → 套餐 6 U 用户**实付 1 USDT** + 服务端 mint 5 个等值 token；已领或活动关闭 → 普通充值 (套餐 = 实付 USDT)
-- 命令执行**前**询问用户，问句里"钱包"必须显式出现，并提示 U 单位：
+- Preset packages: **6 / 10 / 20 / 50 U** (**U** is the unified pricing unit from the user's perspective; during the campaign 1 U = 1 USDT equivalent; the CLI internally figures out the actual payment)
+- During the campaign the client automatically detects whether this wallet has claimed the coupon yet: not claimed → 6 U package, the user **actually pays 1 USDT** + the server mints 5 equivalent tokens; claimed or campaign closed → regular top-up (package = actual USDT paid)
+- **Before** running the command, ask the user — the question must explicitly mention "wallet" and hint at the U unit:
 
-  > 你想给 **session 钱包** 充值多少 U？（套餐: 6 / 10 / 20 / 50）
+  > How much **U** do you want to top up to your **session wallet**? (packages: 6 / 10 / 20 / 50)
 
-- 选定后执行：
+- After confirmation, run:
 
 ```bash
-aigateway wallet-topup --amount <n>     # 单位 U; CLI 自动计算实付 USDT
+aigateway wallet-topup --amount <n>     # unit U; CLI computes the actual USDT
 ```
 
-输出第一行（**按字面**）：
+First output line (**verbatim**):
 
 ```
 > Topping up wallet...
 ```
 
-### 成功 envelope 形状
+### Success envelope shape
 
 ```json
 {
@@ -221,153 +222,153 @@ aigateway wallet-topup --amount <n>     # 单位 U; CLI 自动计算实付 USDT
 }
 ```
 
-### 决策树（按 envelope 给用户输出**一行**总结，然后继续进 Phase 3）
+### Decision tree (output **one line** summary per envelope, then continue to Phase 3)
 
-| 字段组合 | 输出文案 |
+| Field combination | Output text |
 | --- | --- |
-| `coupon.claimed: true` | `🎁 充值 ${topup.displayAmount} U 完成：实付 ${topup.actualPay} USDT，活动赠送 ${coupon.tokenAmount} U 体验额度，总余额 ${totalU} U` |
-| `coupon.claimed: false` | `✅ 充值 ${topup.actualPay} USDT 已到账，但优惠 mint 失败（${coupon.code}）。当前余额 ${usdt} USDT；如需补领请联系运营` |
-| `coupon: null` + `topup` 有值 | `✅ 充值 ${topup.displayAmount} USDT 完成，当前余额 ${totalU} U`（普通流程 / 已领过 / 服务端不可达） |
-| `topup: null` | `✅ Wallet ready: ${addr前3}...{last4}, balance ${totalU} U` |
+| `coupon.claimed: true` | `🎁 Topped up ${topup.displayAmount} U: paid ${topup.actualPay} USDT, campaign granted ${coupon.tokenAmount} U experience credit, total balance ${totalU} U` |
+| `coupon.claimed: false` | `✅ ${topup.actualPay} USDT received, but coupon mint failed (${coupon.code}). Current balance ${usdt} USDT; contact ops for a manual re-claim if needed` |
+| `coupon: null` + `topup` has value | `✅ Topped up ${topup.displayAmount} USDT, current balance ${totalU} U` (regular flow / already claimed / server unreachable) |
+| `topup: null` | `✅ Wallet ready: ${addr first 3}...{last 4}, balance ${totalU} U` |
 
-⚠️ `wallet-topup` 会弹 WalletConnect 二维码 —— **必须前台同步运行**，永远不要 `run_in_background: true`。
+⚠️ `wallet-topup` opens a WalletConnect QR — **must run synchronously in the foreground**, never `run_in_background: true`.
 
-### 错误情况
+### Error situations
 
-| `error.code` | 动作 |
+| `error.code` | Action |
 | --- | --- |
-| `TOPUP_AMOUNT_TOO_SMALL` | 展示 `error.minTopup`，问更大金额 |
-| `PAYMENT_REJECTED` | 用户取消。**不要自动重试** |
-| `PAYMENT_TIMEOUT` | 5 分钟窗口过期。**不要自动重试** |
-| `INSUFFICIENT_BNB`（充值后） | 运行 `aigateway wallet-gas`，再重试 |
-| `APPROVE_FAILED` | 链上 approve 失败；透传错误，建议重试 |
+| `TOPUP_AMOUNT_TOO_SMALL` | Show `error.minTopup`, ask for a larger amount |
+| `PAYMENT_REJECTED` | User canceled. **Do not auto-retry** |
+| `PAYMENT_TIMEOUT` | 5-minute window expired. **Do not auto-retry** |
+| `INSUFFICIENT_BNB` (after top-up) | Run `aigateway wallet-gas`, then retry |
+| `APPROVE_FAILED` | On-chain approve failed; surface the error, suggest retry |
 
 ---
 
-## Phase 3: 识别任务类别 + 选择模型 ⭐
+## Phase 3: Identify Task Category + Pick Model ⭐
 
-这是 Agent 决策的核心：从用户原话识别类别 → 从 catalog 挑选 model → 把用户原话翻译成 `inputs` 字段。
+This is the heart of the agent's decision-making: identify the category from the user's wording → pick a model from the catalog → translate the user's wording into `inputs` field values.
 
-> Inputs 的**最终校验**由 `sb invoke` 在 Phase 4 内置兜底（必填 / 枚举 / 类型 / 范围），所以本阶段重点是**翻译**而非"校验"。
+> The **final inputs validation** is handled by `sb invoke` in Phase 4 (required / enum / type / range), so this phase is about **translation**, not "validation".
 
-### 3.1 识别任务类别
+### 3.1 Identify the task category
 
-把用户意图归到下表中的一行：
+Bucket the user's intent into one of these rows:
 
-| 用户想做的事 | 类别 | 模板 model_id | 推荐入口 |
+| What the user wants to do | Category | Template `model_id` | Recommended entry |
 | --- | --- | --- | --- |
-| 生成图像 | `image` | 见 ref（flux-schnell / flux-2-max / dall-e-3 / fal/upscale 等） | `sb invoke --model <id>` |
-| 生成视频 / 动画 | `video` | `seedance/seedance-2.0`、`replicate/google/veo-3.1` 等 | `sb invoke --model <id>` |
-| 文本转语音 / 合成声音 | `tts` | `elevenlabs/eleven_multilingual_v2`、`minimax/speech-01-turbo` 等 | `sb invoke --model <id>` |
-| 转录 / 语音转文字 | `stt` | `openai/whisper-1` | `sb invoke --model <id>` |
-| 网络搜索 / 查信息 | `search` | `perplexity/search`、`tavily/search` 等 | `sb invoke --model <id>` |
-| 抓取网页 / 提取数据 | `scraper` | `firecrawl/scrape`、`firecrawl/extract` 等 | `sb invoke --model <id>` |
-| 社交 / 商业数据（Twitter / IG / LinkedIn / Amazon / Yelp …） | `social_data` | `linkedin-profile`、`twitter-profile` 等 | `sb invoke --model <id>` |
-| 发邮件 | `email` | `aws/send-emails`、`ses/send-batch` | `sb invoke --model <id>` |
-| 发短信 / OTP | `sms` | `prelude/notify-send`、`prelude/verify-send` | `sb invoke --model <id>` |
-| 解析 PDF / DOCX | `document` | `reducto/parse`、`marker` | `sb invoke --model <id>` |
-| 生成落地页 / 移动 UI / 演示文稿 | `ui_generation` | `stitch/generate-desktop`、`gamma/generation` | `sb invoke --model <id>` |
-| 向量嵌入 | `embeddings` | `openai/text-embedding-3-large` | `sb invoke --model <id>` |
-| 加密货币 / 股票 / 外汇 / 天气 / 实用数据 | `utility` | `alphavantage/quote`、`openmeteo/*` 等 | `sb invoke --model <id>` |
-| 不确定能做什么 | （引导） | — | 引用上表，告诉用户能做什么 |
+| Generate image | `image` | see ref (flux-schnell / flux-2-max / dall-e-3 / fal/upscale etc.) | `sb invoke --model <id>` |
+| Generate video / animation | `video` | `seedance/seedance-2.0`, `replicate/google/veo-3.1`, etc. | `sb invoke --model <id>` |
+| Text-to-speech / voice synthesis | `tts` | `elevenlabs/eleven_multilingual_v2`, `minimax/speech-01-turbo`, etc. | `sb invoke --model <id>` |
+| Transcription / speech-to-text | `stt` | `openai/whisper-1` | `sb invoke --model <id>` |
+| Web search / look-up info | `search` | `perplexity/search`, `tavily/search`, etc. | `sb invoke --model <id>` |
+| Scrape a page / extract data | `scraper` | `firecrawl/scrape`, `firecrawl/extract`, etc. | `sb invoke --model <id>` |
+| Social / business data (Twitter / IG / LinkedIn / Amazon / Yelp …) | `social_data` | `linkedin-profile`, `twitter-profile`, etc. | `sb invoke --model <id>` |
+| Send email | `email` | `aws/send-emails`, `ses/send-batch` | `sb invoke --model <id>` |
+| Send SMS / OTP | `sms` | `prelude/notify-send`, `prelude/verify-send` | `sb invoke --model <id>` |
+| Parse PDF / DOCX | `document` | `reducto/parse`, `marker` | `sb invoke --model <id>` |
+| Generate landing page / mobile UI / slides | `ui_generation` | `stitch/generate-desktop`, `gamma/generation` | `sb invoke --model <id>` |
+| Embeddings | `embeddings` | `openai/text-embedding-3-large` | `sb invoke --model <id>` |
+| Crypto / stock / FX / weather / utility data | `utility` | `alphavantage/quote`, `openmeteo/*`, etc. | `sb invoke --model <id>` |
+| Unsure what's possible | (guidance) | — | Quote the table above, tell the user what's possible |
 
-> 同一意图可能落到多个类别（如"做个含图的演示" = `image` + `ui_generation`），按用户**主诉求**选最匹配的一类先做。
+> A single intent may fall into multiple categories (e.g. "make a slide deck with images" = `image` + `ui_generation`); pick the one that best matches the user's **main intent** first.
 
-### 3.2 列出候选 model，等用户挑
+### 3.2 List candidate models, wait for user choice
 
-⭐ **默认模式**：**AI 不擅自选 model**，而是把候选 + 预估总价列给用户，让用户拍板。**推荐默认选最便宜的**（按 `tier: "price"` 优先排序）。
+⭐ **Default mode**: **the AI does not pick the model unilaterally**, but lists candidates + estimated totals to the user, letting them decide. **Recommend the cheapest by default** (sort by `tier: "price"` first).
 
-**跳过候选展示的场景**（任一命中即跳过）：
+**Cases where the candidate list is skipped** (any one match):
 
-1. 用户原话已经指定了 model（`"用 flux-2-max 画"`） → 直接用
-2. **任务匹配后候选只剩 1 个 model** → 直接用该 model，不要再渲染单行"列表"和"输入序号"引导。若 `priceUnit` 需要用量字段（`per_second` / `per_minute`），只问用量；其它直接调用。用一行 `✨ 选用 {model_id}（${unitPrice}{unit-cn} × {quantity} = ${total} USDT），开始生成…` 替代候选表格。
+1. The user has named a model explicitly (`"draw with flux-2-max"`) → use it directly
+2. **Only 1 model matches the task** → use that model directly, skip the single-row "list" and "type a number" prompt. If `priceUnit` requires a quantity field (`per_second` / `per_minute`), only ask for the quantity; otherwise invoke directly. Use a one-liner `✨ Using {model_id} (${unitPrice}{unit} × {quantity} = ${total} USDT), generating…` instead of the candidate table.
 
-#### Step A: 看 `priceUnit` 决定是否前置询问用量
+#### Step A: check `priceUnit` to decide whether to ask for quantity upfront
 
-catalog 中每个 model 都有 `priceUnit` 字段。**服务端按 `priceUnit` 强校验用量字段**，前置不问 → 调用直接报错。
+Every model in the catalog has a `priceUnit` field. **The server strictly validates the quantity field based on `priceUnit`** — skip the upfront question and the call will fail.
 
-| `priceUnit` | 用量字段 | 服务端强校验？ | 前置询问？ |
+| `priceUnit` | Quantity field | Server strict check? | Ask upfront? |
 | --- | --- | --- | --- |
-| `per_request` / `per_image` | `inputs.num_outputs` | 越界报错（1–10），缺省默认 1 | 否 |
-| `per_second`（video / music） | `inputs.duration` | **必填**（1–300）；缺 → `MISSING_DURATION` 400 | **必问 ——「按秒计费。你想生成多少秒？默认 5 秒」** |
-| `per_1k_chars`（tts） | `inputs.text` 字符数 | text 必填非空；缺 → `MISSING_TEXT` 400 | 否（文本来自用户原话） |
-| `per_minute`（stt） | `inputs.duration_minutes` | **必填**（1–360）；缺 → `MISSING_DURATION` 400 | **必问 ——「按分钟计费。这段音频大约多少分钟？」** |
-| `per_million_tokens`（embeddings） | `inputs.input` 字符数 / 4 | input 必填非空；缺 → `MISSING_INPUT` 400 | 否（服务端按字符长度估算 token） |
+| `per_request` / `per_image` | `inputs.num_outputs` | Out-of-range error (1–10), defaults to 1 if absent | No |
+| `per_second` (video / music) | `inputs.duration` | **Required** (1–300); missing → `MISSING_DURATION` 400 | **Yes — "Billed per second. How many seconds? default 5"** |
+| `per_1k_chars` (tts) | length of `inputs.text` | text required and non-empty; missing → `MISSING_TEXT` 400 | No (text comes from the user's wording) |
+| `per_minute` (stt) | `inputs.duration_minutes` | **Required** (1–360); missing → `MISSING_DURATION` 400 | **Yes — "Billed per minute. How long is this audio in minutes?"** |
+| `per_million_tokens` (embeddings) | `len(inputs.input) / 4` | input required and non-empty; missing → `MISSING_INPUT` 400 | No (server estimates tokens from char length) |
 
-⚠️ **服务端强校验是为了计费安全**：
-- 漏传 `duration` → 服务端无法按真实时长收费 → 拒绝
-- 用户传 0 / 负数想绕过 → 拒绝
-- 超出上限（5 分钟视频 / 6 小时音频）→ 拒绝
+⚠️ **The server's strict check exists to protect billing**:
+- Missing `duration` → server can't charge by real length → reject
+- User passes 0 / negative to bypass → reject
+- Out of upper bound (5-minute video / 6-hour audio) → reject
 
-#### Step B: 候选展示模板（按字面渲染）
+#### Step B: candidate display template (render verbatim)
 
-拿到用量后，跑 `aigateway sb tools --category <key>` 取所有 model，**按 tier 排序**（price → balanced → quality），渲染：
+After you have the quantity, run `aigateway sb tools --category <key>` to fetch all models, **sort by tier** (price → balanced → quality), and render:
 
 ```
-✨ 可用 model（{category 中文名}{ — 基于 {N}{unit-cn} 预估}）
+✨ Available models ({category}{ — based on {N}{unit} estimate})
 
-  #  Model ID                              单价         预估总价     档位
-  1  {model_id}                            ${unitPrice}{unit-cn}  ${total} {tier} ← 推荐
-  2  {model_id}                            ${unitPrice}{unit-cn}  ${total} {tier}
+  #  Model ID                              Unit Price   Est. Total   Tier
+  1  {model_id}                            ${unitPrice}{unit}  ${total} {tier} ← Recommended
+  2  {model_id}                            ${unitPrice}{unit}  ${total} {tier}
   ...
 
-直接回车或输入 1 用推荐项；或输入序号 / 完整 model_id 选其它。
+Press Enter or type 1 to use the recommended; or enter the row number / full model_id to pick another.
 ```
 
-**字段规则**：
-- 第 1 行**永远**是 tier=`price` 档（最便宜），并加 `← 推荐` 后缀
-- `{N}{unit-cn}` 只在用量已知时显示（如 "基于 5 秒预估"）；per_request 类省略
-- `${total}` = `unitPrice × quantity`（quantity 见上表）
-- 用户输序号 / 完整 `model_id` / 直接回车 都接受
+**Field rules**:
+- Row 1 is **always** the tier=`price` (cheapest) and gets the `← Recommended` suffix
+- `{N}{unit}` only appears when quantity is known (e.g. "based on 5s estimate"); per_request types skip it
+- `${total}` = `unitPrice × quantity` (quantity formulas above)
+- Accept row number / full `model_id` / Enter alike
 
-#### priceUnit → 中文单位 + quantity 公式
+#### priceUnit → unit label + quantity formula
 
-| `priceUnit` | `{unit-cn}` | quantity 公式 | 总价示例 |
+| `priceUnit` | `{unit}` | Quantity formula | Example total |
 | --- | --- | --- | --- |
-| `per_request` | `/次` | `num_outputs` 或 1 | $0.02 × 1 = **$0.02** |
-| `per_image` | `/张` | `num_outputs` 或 1 | $0.01 × 4 = **$0.04** |
-| `per_second` | `/秒` | `duration × num_outputs`（默认 5×1） | $0.20 × **6 秒** × 1 = **$1.20** |
-| `per_1k_chars` | `/1K 字符` | `len(text) / 1000` | $0.05 × **2.5K 字** = **$0.125** |
-| `per_minute` | `/分钟` | `duration_minutes` 或 1 | $0.02 × **3 分钟** = **$0.06** |
+| `per_request` | `/req` | `num_outputs` or 1 | $0.02 × 1 = **$0.02** |
+| `per_image` | `/image` | `num_outputs` or 1 | $0.01 × 4 = **$0.04** |
+| `per_second` | `/sec` | `duration × num_outputs` (default 5×1) | $0.20 × **6 sec** × 1 = **$1.20** |
+| `per_1k_chars` | `/1K chars` | `len(text) / 1000` | $0.05 × **2.5K chars** = **$0.125** |
+| `per_minute` | `/min` | `duration_minutes` or 1 | $0.02 × **3 min** = **$0.06** |
 | `per_million_tokens` | `/M tokens` | `len(input) / 4 / 1M` | $0.26 × **0.5M tokens** ≈ **$0.13** |
 
-> 价格是**预估**。**精确金额**由服务端按 `model.priceUnit × inputs 用量` 算出，并在 x402 第一阶段（402 响应）返回；CLI 在 `💰 Charged` 行展示真实扣款。
+> Prices are **estimates**. The **exact amount** is computed server-side by `model.priceUnit × inputs quantity` and returned in the x402 first stage (402 response); the CLI shows the actual charge on the `💰 Charged` line.
 
-#### 用户偏好覆盖
+#### User preference overrides
 
-| 用户原话 | AI 动作 |
+| User wording | AI action |
 | --- | --- |
-| （无偏好）"画一只猫" | 列候选 → 等用户选 → 用户选完才调 `sb invoke` |
-| "用便宜的画一只猫" | 直接用候选 #1（最便宜），跳过等待 |
-| "用最好的画一只猫" | 直接用 `tier: "quality"` 档第一个，跳过等待 |
-| "用 flux-2-max 画一只猫" | 直接用 `flux-2-max`，**完全跳过候选展示** |
-| 用户输入序号 (e.g. "2") | 用候选列表第 2 行的 model |
-| 用户输入完整 model_id | 用该 model_id |
+| (no preference) "Draw a cat" | List candidates → wait for user pick → call `sb invoke` after pick |
+| "Draw a cat with a cheap one" | Use candidate #1 (cheapest) directly, skip waiting |
+| "Draw a cat with the best one" | Use the first `tier: "quality"` model directly, skip waiting |
+| "Draw a cat with flux-2-max" | Use `flux-2-max` directly, **skip the candidate list entirely** |
+| User types a number (e.g. "2") | Use the model at row #2 of the candidate list |
+| User types a full model_id | Use that model_id |
 
-**查询 model 清单**：跑 `aigateway sb tools` 拿到完整 catalog，从 stdout envelope 的 `data.categories[].models[]` 中按 `tier` 挑 `model_id`。
+**To query the model list**: run `aigateway sb tools` to fetch the full catalog, pick the `model_id` from `data.categories[].models[]` by `tier` in the stdout envelope.
 
-**重要**：
-- **不要凭记忆猜 model_id** —— 不同 vendor 命名风格不一（`firecrawl/scrape`、`linkedin-profile`、`replicate/openai/sora-2-pro`）
-- **不要把任务类别字面当 model_id** —— `tts` 不是 model_id，`minimax/speech-01-turbo` 才是
+**Important**:
+- **Do not guess `model_id` from memory** — vendors have inconsistent naming (`firecrawl/scrape`, `linkedin-profile`, `replicate/openai/sora-2-pro`)
+- **Do not use a category name as `model_id`** — `tts` is not a model_id; `minimax/speech-01-turbo` is
 
-### 3.3 用 inputsSchema 组装 `inputs` 字段
+### 3.3 Build the `inputs` field using inputsSchema
 
-从 catalog 中拿所选 model 的 schema（`model.inputsOverride ?? category.defaultInputsSchema`），**把用户原话映射成具体字段值**：
+Take the chosen model's schema from the catalog (`model.inputsOverride ?? category.defaultInputsSchema`), and **map the user's wording into concrete field values**:
 
-- 取 `required` 数组，必填字段从用户表达里拿；拿不到 → 问一次："调用 `{model_id}` 需要 `{field}`，你的 `{field}` 是？"
-- 取 `properties.{field}.enum` / `default` / `description`，把模糊表达落到精确取值
-  - 例："正方形" → `aspect_ratio: "1:1"`（从 enum 选）
-  - 例："要快" → 选 `tier: "price"` 的 model（这是 3.2 的工作，不是 inputs 字段）
+- Take the `required` array — required fields come from the user's expression; if you can't get them, ask once: "Calling `{model_id}` needs `{field}`. What is your `{field}`?"
+- Take `properties.{field}.enum` / `default` / `description` to map vague wording into precise values
+  - e.g. "square" → `aspect_ratio: "1:1"` (pick from enum)
+  - e.g. "make it fast" → pick a `tier: "price"` model (that belongs to 3.2's job, not the inputs field)
 
-**绝不**用占位符（`"https://example.com"` / `"..."`）替代用户真实输入。
+**Never** use placeholders (`"https://example.com"` / `"..."`) in place of real user input.
 
-> 📌 **校验由 `sb invoke` 兜底**：组装完直接调用即可。CLI 在 Phase 4 发出网络请求前会用 catalog 强校验 inputs，错误码 `MISSING_INPUTS` / `INVALID_INPUTS` / `INVALID_MODEL_ID` 会**本地秒级反馈**，不消耗 x402 探测。
+> 📌 **Validation is handled by `sb invoke`**: just assemble and call. The CLI uses the catalog to validate inputs **locally and instantly** before any network round-trip in Phase 4; `MISSING_INPUTS` / `INVALID_INPUTS` / `INVALID_MODEL_ID` errors come back in milliseconds without spending an x402 probe.
 
 ---
 
-## Phase 4: x402 支付调用
+## Phase 4: x402 Paid Call
 
-### 4.1 通用形式
+### 4.1 General form
 
 ```bash
 aigateway sb invoke \
@@ -377,64 +378,64 @@ aigateway sb invoke \
   [--raw]
 ```
 
-- `--model` = Phase 3.2 选定的 `model_id`
-- `--inputs` = Phase 3.3 组装好的 JSON（字面量或 `@path/to/file.json`）；CLI 在发请求前会用 catalog 内置校验
-- `--output` = 默认按类型放到 `~/aigateway-images/` / `~/aigateway-videos/` / `~/aigateway-audio/`，用户指定时才覆盖
-- `--raw` = 跳过自动下载，直接输出服务端 raw response
+- `--model` = the `model_id` chosen in Phase 3.2
+- `--inputs` = the JSON assembled in Phase 3.3 (literal or `@path/to/file.json`); the CLI validates against the catalog before sending
+- `--output` = defaults to `~/aigateway-images/` / `~/aigateway-videos/` / `~/aigateway-audio/` based on type; override only when the user specifies
+- `--raw` = skip auto-download, output the server raw response directly
 
-输出第一行（**按字面**）：
+First output line (**verbatim**):
 
 ```
 > Invoking {model_id}...
 ```
 
-⚠️ 钱包余额不足时，`sb invoke` 可能弹 WalletConnect 二维码 —— **必须前台运行**。
+⚠️ When the wallet runs low, `sb invoke` may open a WalletConnect QR — **must run in the foreground**.
 
-### 4.2 x402 流程（CLI 自动完成，Agent 无需介入）
+### 4.2 x402 flow (the CLI handles this; the agent stays out of it)
 
-1. 第一次请求 `GET /open/ai/x402/skillBoss/create?body=<urlencoded JSON>&appId=<merchant>` → 服务端返回 HTTP 402 + 支付要求（USDT 金额 + payTo + orderNo）
-2. CLI 检查 USDT 余额 / allowance，不足时自动回落到 Phase 2 充值流程
-3. EIP-712 签署 USDT 支付 → 携带 `PAYMENT-SIGNATURE` header 重发请求
-4. 服务端拿到支付凭证 → 代理调用上游 AI 工具 API
-5. 返回 HTTP 200 + 响应数据（含 `transaction` hash 与下载链接）
-6. CLI 把二进制（image / video / audio）自动下载到 `--output`
+1. First request `GET /open/ai/x402/skillBoss/create?body=<urlencoded JSON>&appId=<merchant>` → server returns HTTP 402 + payment requirements (USDT amount + payTo + orderNo)
+2. CLI checks USDT balance / allowance and auto-falls back to Phase 2 if insufficient
+3. EIP-712 sign the USDT payment → re-send the request with a `PAYMENT-SIGNATURE` header
+4. Server receives the payment proof → proxies the call to the upstream AI tool API
+5. Returns HTTP 200 + response data (with `transaction` hash and download links)
+6. CLI auto-downloads binary outputs (image / video / audio) to `--output`
 
 ---
 
-## Phase 5: 渲染响应
+## Phase 5: Render the Response
 
-### 5.1 `sb invoke` 成功 —— `envelope.data` 形状
+### 5.1 `sb invoke` success — `envelope.data` shape
 
 ```json
 {
   "model": "<model_id>",
-  "inputs": { /* 回显 */ },
+  "inputs": { /* echo */ },
   "transaction": "0x..." | null,
   "downloaded": [
     { "url": "...", "localPath": "...", "format": "png", "width": 1024, "height": 576, "sizeBytes": 412345, "sizeHuman": "402.7 KB" }
   ],
-  "raw": { /* 上游完整响应 */ },
+  "raw": { /* full upstream response */ },
   "balance": { "initial": "...", "before": "...", "after": "...", "charged": 0.01, "topup": null }
 }
 ```
 
-- **二进制输出**（image / video / audio）—— `downloaded[]` 非空，Agent 应该把 `localPath` 展示给用户
-- **JSON 输出**（搜索 / 抓取 / 数据 / 转录 / 邮件确认 等）—— 真实结果在 `raw` 下，按 `sb tools` catalog 中该 model 的 `responseFields.jsonPath` 提取
+- **Binary outputs** (image / video / audio) — `downloaded[]` is non-empty; the agent should show `localPath` to the user
+- **JSON outputs** (search / scrape / data / transcription / email confirmation, etc.) — the real result is under `raw`; extract it per the model's `responseFields.jsonPath` in `sb tools` catalog
 
-### 5.2 渲染模板（二进制输出）
+### 5.2 Render template (binary outputs)
 
-**按字面**渲染（emoji、空格、字形 `→` / `−` / `+` 严格一致）：
+Render **verbatim** (emoji, spacing, glyphs `→` / `−` / `+` exact):
 
 ```
 ✅ Done
 🧩 Powered by Skillboss · {model_id}
 📁 Path        {localPath}
 🔗 Tx          {transaction}
-💸 Top-up      {initial} → {before} USDT (+{topup})    ← topup 为 null 或 "0" 时整行省略
+💸 Top-up      {initial} → {before} USDT (+{topup})    ← skip this line entirely when topup is null or "0"
 💰 Charged     {before} → {after} USDT (−{charged})
 ```
 
-图像额外行：
+Image extra lines:
 
 ```
 🎨 Format      {FORMAT}
@@ -442,230 +443,230 @@ aigateway sb invoke \
 💾 Size        {sizeHuman}
 ```
 
-视频额外行：
+Video extra lines:
 
 ```
 ⏱  Duration    {duration}s
 💾 Size        {sizeHuman}
 ```
 
-音频额外行：
+Audio extra lines:
 
 ```
 🎵 Duration    {duration}s
 💾 Size        {sizeHuman}
 ```
 
-字段规则：
-- `{transaction}` = `data.transaction`；为 `null` 时该行渲染 `🔗 Tx          —`
-- `💸 Top-up` 行**条件渲染**：仅当 `data.balance.topup` 非 null 且非 "0" 时；否则**整行省略**
-- `💰 Charged` 行**永远**渲染
-- 减号 `−` (U+2212)，箭头 `→` (U+2192)
+Field rules:
+- `{transaction}` = `data.transaction`; if `null`, render `🔗 Tx          —`
+- `💸 Top-up` line is **conditional**: only when `data.balance.topup` is non-null and not "0"; otherwise **skip the entire line**
+- `💰 Charged` line is **always** rendered
+- Minus sign `−` (U+2212), arrow `→` (U+2192)
 
-### 5.3 渲染模板（仅 JSON 输出）
+### 5.3 Render template (JSON-only outputs)
 
-**按字面**渲染：
+Render **verbatim**:
 
 ```
 ✅ Done
 🧩 Powered by Skillboss · {model_id}
 🔗 Tx          {transaction}
-💸 Top-up      {initial} → {before} USDT (+{topup})    ← topup 为 null 或 "0" 时整行省略
+💸 Top-up      {initial} → {before} USDT (+{topup})    ← skip this line entirely when topup is null or "0"
 💰 Charged     {before} → {after} USDT (−{charged})
 ```
 
-然后用 **一两句话**总结实际结果（前 3 条搜索命中、抓取的 markdown 节选、邮件 message-id、社交资料概要等）。**不要倾倒整个 `raw` JSON**，除非用户明确要看。
+Then summarize the actual result in **one or two sentences** (top 3 search hits, a snippet of scraped markdown, the email message-id, social profile summary, etc.). **Do not dump the entire `raw` JSON** unless the user explicitly asks.
 
-### 5.4 错误码（统一）
+### 5.4 Error codes (unified)
 
-| `error.code` | exit | 含义 / Agent 应对 |
+| `error.code` | exit | Meaning / agent response |
 | --- | --- | --- |
-| `WALLET_NOT_CONFIGURED` | 1 | 钱包未初始化；运行 `wallet-init` |
-| `MISSING_MODEL` | 1 | `--model` 必填；提示用户/agent 选 model |
-| `MISSING_INPUTS` | 1 | CLI 兜底校验：必填字段缺失（含 `errors[].field` 列出缺哪些）；按 Phase 3.3 schema 补齐 |
-| `INVALID_INPUTS` | 1 | CLI 兜底校验：inputs schema 不通过（含 `errors[].field` + `kind` ∈ enum / type / range）；按 schema 修正 |
-| `INVALID_INPUTS_JSON` | 1 | `--inputs` JSON 解析失败；检查引号转义 |
-| `INPUTS_FILE_NOT_FOUND` | 1 | `--inputs @path` 文件不存在；与用户确认路径 |
-| `INVALID_MODEL_ID` | 1 | 服务端拒绝该 model_id；重 Read ref 挑有效的 |
-| `INSUFFICIENT_USDT`（充值后） | 1 | 充值不够；建议增大 `--topup-amount` |
-| `INSUFFICIENT_BNB`（充值后） | 1 | 无 BNB 付 approve gas；运行 `wallet-gas` |
-| `PAYMENT_REJECTED` | 1 | 用户取消签名；**不要自动重试** |
-| `PAYMENT_TIMEOUT` | 2 | 5 分钟窗口过期；**不要自动重试** |
-| `DOWNLOAD_FAILED` | 3 | 服务端返回 URL 但本地下载失败；URL 仍在 `data.downloaded[].url` |
-| `PAYMENT_FAILED` | 3 | 上游 vendor 错误；透传 `error.data`；5xx 重试一次 |
-| `PAYMENT_FETCH_FAILED` | 3 | 拉取支付要求失败；网络问题 |
-| `MISSING_DURATION` | 1 | 服务端强校验：video / music 缺 `inputs.duration`，或 stt 缺 `inputs.duration_minutes`。**必须前置问用户**再调 |
-| `INVALID_DURATION` | 1 | 服务端强校验：duration 越界（video 1–300 秒 / stt 1–360 分钟） |
-| `MISSING_TEXT` / `MISSING_INPUT` | 1 | TTS / embeddings 必填字段为空 |
-| `INVALID_NUM_OUTPUTS` | 1 | `inputs.num_outputs` 越界（1–10） |
-| `MODEL_PRICING_NOT_CONFIGURED` | 1 | 服务端未给该 model 配价；告知用户该 model 暂不可用，建议换 model（或联系运维补 catalog） |
-| `INVALID_BODY` | 1 | 服务端拒绝 body 格式；通常是 CLI bug，提交反馈 |
-| `CATALOG_FETCH_FAILED` | 3 | `sb tools` 拉取 catalog 失败；网络问题，stale cache 仍可用 |
-| `TOPUP_REQUIRED` | 1 | 余额不足且非交互模式；按 `error.minTopup` / `error.presets` 引导用户带 `--topup-amount` 重跑 |
-| `NO_MAIN_WALLET` | 1 | `wallet-withdraw` 没指定目标；询问地址，带 `--to <address>` 重试 |
-| `NO_FUNDS` | 1 | `wallet-withdraw` 时无可提现资金 |
-| `UPDATE_APPLIED` | 2 | CLI 已同步升级到新版本，**之前命令未执行**；告知版本切换（`error.from` → `error.to`），**完全照原样重跑**同条命令；**不要**让用户手动升级 |
+| `WALLET_NOT_CONFIGURED` | 1 | Wallet not initialized; run `wallet-init` |
+| `MISSING_MODEL` | 1 | `--model` required; ask the user / agent to pick |
+| `MISSING_INPUTS` | 1 | CLI-side validation: required fields missing (with `errors[].field` listing them); fill per the Phase 3.3 schema |
+| `INVALID_INPUTS` | 1 | CLI-side validation: inputs schema failed (with `errors[].field` + `kind` ∈ enum / type / range); fix per schema |
+| `INVALID_INPUTS_JSON` | 1 | `--inputs` JSON parse failed; check quote escaping |
+| `INPUTS_FILE_NOT_FOUND` | 1 | `--inputs @path` file missing; confirm path with the user |
+| `INVALID_MODEL_ID` | 1 | Server rejected the model_id; re-read the ref and pick a valid one |
+| `INSUFFICIENT_USDT` (after top-up) | 1 | Top-up wasn't enough; suggest a larger `--topup-amount` |
+| `INSUFFICIENT_BNB` (after top-up) | 1 | No BNB for approve gas; run `wallet-gas` |
+| `PAYMENT_REJECTED` | 1 | User rejected the signature; **do not auto-retry** |
+| `PAYMENT_TIMEOUT` | 2 | 5-minute window expired; **do not auto-retry** |
+| `DOWNLOAD_FAILED` | 3 | Server returned a URL but local download failed; the URL is still in `data.downloaded[].url` |
+| `PAYMENT_FAILED` | 3 | Upstream vendor error; pass through `error.data`; retry once on 5xx |
+| `PAYMENT_FETCH_FAILED` | 3 | Couldn't fetch payment requirements; network issue |
+| `MISSING_DURATION` | 1 | Server strict check: video / music missing `inputs.duration`, or stt missing `inputs.duration_minutes`. **Must ask the user upfront** before calling |
+| `INVALID_DURATION` | 1 | Server strict check: duration out of range (video 1–300 sec / stt 1–360 min) |
+| `MISSING_TEXT` / `MISSING_INPUT` | 1 | TTS / embeddings required field is empty |
+| `INVALID_NUM_OUTPUTS` | 1 | `inputs.num_outputs` out of range (1–10) |
+| `MODEL_PRICING_NOT_CONFIGURED` | 1 | Server has no pricing configured for this model; tell the user it's unavailable and suggest another (or escalate to ops to add the catalog) |
+| `INVALID_BODY` | 1 | Server rejected the body format; usually a CLI bug — file a report |
+| `CATALOG_FETCH_FAILED` | 3 | `sb tools` couldn't fetch catalog; network issue, stale cache may still work |
+| `TOPUP_REQUIRED` | 1 | Balance too low and not in interactive mode; guide the user to re-run with `--topup-amount` per `error.minTopup` / `error.presets` |
+| `NO_MAIN_WALLET` | 1 | `wallet-withdraw` has no target; ask for an address, retry with `--to <address>` |
+| `NO_FUNDS` | 1 | `wallet-withdraw` finds no funds to withdraw |
+| `UPDATE_APPLIED` | 2 | CLI auto-upgraded to a new version, **the previous command did NOT execute**; tell the user about the version bump (`error.from` → `error.to`) and **re-run the exact same command verbatim**; **do not** ask the user to upgrade manually |
 
 ---
 
-## Phase 6: 钱包管理（按需）
+## Phase 6: Wallet Management (on demand)
 
-### 余额查询
+### Balance lookup
 
 ```bash
 aigateway wallet-balance
 ```
 
-`envelope.data`：`{ address, usdt, bnb, mainWallet? }`
+`envelope.data`: `{ address, usdt, bnb, mainWallet? }`
 
-### 提现
+### Withdraw
 
 ```bash
-aigateway wallet-withdraw                            # 全部 USDT → mainWallet
-aigateway wallet-withdraw --amount <usdt>            # 指定金额
-aigateway wallet-withdraw --to 0x...                 # 指定目标
+aigateway wallet-withdraw                            # all USDT → mainWallet
+aigateway wallet-withdraw --amount <usdt>            # specific amount
+aigateway wallet-withdraw --to 0x...                 # specific destination
 ```
 
-**按字面**展示：
+Render **verbatim**:
 
 ```
 > Reclaiming funds...
 
-From: {session前3}...{session_last4}
-To: main wallet ({main前3}...{main_last4})
+From: {session first 3}...{session last 4}
+To: main wallet ({main first 3}...{main last 4})
 
 Amount: {amount} USDT
 Status: completed
 ```
 
-"main wallet" 字面标签必须保留。
+The "main wallet" literal label must be preserved.
 
-| 边界 `error.code` | 动作 |
+| Edge `error.code` | Action |
 | --- | --- |
-| `NO_MAIN_WALLET` | 询问目标地址，带 `--to <address>` 重试 |
-| `INSUFFICIENT_BNB`（提现时） | 先运行 `aigateway wallet-gas` |
-| `NO_FUNDS` | 告诉用户没有可提现资金 |
+| `NO_MAIN_WALLET` | Ask for the destination address, retry with `--to <address>` |
+| `INSUFFICIENT_BNB` (on withdraw) | Run `aigateway wallet-gas` first |
+| `NO_FUNDS` | Tell the user there are no withdrawable funds |
 
-### 补 BNB
+### Refill BNB
 
 ```bash
 aigateway wallet-gas [--amount <bnb>]
 ```
 
-用于 `wallet-withdraw` 需要 gas 时。
+Used when `wallet-withdraw` needs gas.
 
 ---
 
-## 命令总览
+## Command Overview
 
 ```bash
-# 钱包管理（aigateway 独有）
-aigateway wallet-init                              # 预检 / 创建钱包并报告 needsTopup
-aigateway wallet-topup [--amount <usdt>]           # WalletConnect 充值 + 首次 approve
-aigateway wallet-balance                           # 重新查余额
-aigateway wallet-gas [--amount <bnb>]              # 给 session-key 补 BNB
-aigateway wallet-withdraw [--to <addr>] [--amount <usdt>]   # 提现
+# Wallet management (aigateway-specific)
+aigateway wallet-init                              # pre-check / create wallet, report needsTopup
+aigateway wallet-topup [--amount <usdt>]           # WalletConnect top-up + first-time approve
+aigateway wallet-balance                           # re-check balance
+aigateway wallet-gas [--amount <bnb>]              # refill session-key BNB
+aigateway wallet-withdraw [--to <addr>] [--amount <usdt>]   # withdraw
 
-# 工具 catalog（从服务端实时获取）
-aigateway sb tools                                 # 实时拉取 catalog
+# Tool catalog (live from server)
+aigateway sb tools                                 # live catalog fetch
 
-# x402 付费调用统一入口
+# Unified x402 paid call entry
 aigateway sb invoke --model <id> --inputs '<json>' [--output <dir>] [--raw]
 
-# 其它
-aigateway clean                                    # 卸载 skill、清缓存
+# Misc
+aigateway clean                                    # uninstall skill, clear cache
 ```
 
-所有命令都接受 `--app-id <id>`（商户 ID；默认 `TEST000001`，用户没明确指定时**不要主动询问**）。配置位于 `~/.aigateway/config.json`（权限 0o600）。
+All commands accept `--app-id <id>` (merchant ID; default `TEST000001`; **don't ask the user to specify** unless they explicitly mention it). Config lives at `~/.aigateway/config.json` (mode 0o600).
 
-**永远不要向用户索取私钥** —— 本地 session-key 自动生成。
-
----
-
-## 输出信封（Output Envelope）
-
-每个 CLI 命令向 **stdout** 输出**一行 JSON** —— 即 *envelope*。进度日志走 stderr，不参与控制流。
-
-- 成功：`{ "ok": true, "command": "...", "version": "...", "data": { /* payload */ } }`
-- 失败：`{ "ok": false, "command": "...", "version": "...", "error": { "code": "...", "message": "...", ... } }`
-
-字段名（`ready`、`model`、`downloaded` 等）位于成功的 `envelope.data` 下或失败的 `envelope.error` 下。**匹配 `error.code` 而非 `error.message`。**
-
-完整 schema：[docs/output-schema.md](../../docs/output-schema.md)、[docs/exit-codes.md](../../docs/exit-codes.md)。
+**Never ask the user for a private key** — the local session-key is auto-generated.
 
 ---
 
-## 决策路由（Decision Routing 总表）
+## Output Envelope
 
-| 用户意图 | 入口命令 |
+Every CLI command emits **one line of JSON** to **stdout** — the *envelope*. Progress logs go to stderr and are not part of the control flow.
+
+- Success: `{ "ok": true, "command": "...", "version": "...", "data": { /* payload */ } }`
+- Failure: `{ "ok": false, "command": "...", "version": "...", "error": { "code": "...", "message": "...", ... } }`
+
+Field names (`ready`, `model`, `downloaded`, etc.) live under `envelope.data` on success or `envelope.error` on failure. **Match on `error.code`, not `error.message`.**
+
+Full schema: [docs/output-schema.md](../../docs/output-schema.md), [docs/exit-codes.md](../../docs/exit-codes.md).
+
+---
+
+## Decision Routing
+
+| User intent | Entry command |
 | --- | --- |
-| 首次进入 / 状态不明 | `wallet-init`（如 needsTopup 接 `wallet-topup`） |
-| 充值 / 加载钱包 | `wallet-topup --amount <n>` |
-| 任意 x402 付费工具（图像 / 视频 / 音频 / 搜索 / 抓取 / 邮件 / 短信 / 文档 / UI / 嵌入 / 金融 / 实用 …） | **先 `aigateway sb tools` 拿 catalog**，再 `sb invoke --model <id> --inputs '<json>'` |
-| 查余额 | `wallet-balance` |
-| 提现 | `wallet-withdraw [--to <addr>] [--amount <n>]` |
-| 补 BNB（用于提现） | `wallet-gas [--amount <bnb>]` |
+| First entry / unknown state | `wallet-init` (chain `wallet-topup` if needsTopup) |
+| Top-up / fund wallet | `wallet-topup --amount <n>` |
+| Any x402 paid tool (image / video / audio / search / scrape / email / SMS / document / UI / embeddings / finance / utility …) | **First `aigateway sb tools` for catalog**, then `sb invoke --model <id> --inputs '<json>'` |
+| Balance lookup | `wallet-balance` |
+| Withdraw | `wallet-withdraw [--to <addr>] [--amount <n>]` |
+| Refill BNB (for withdraw) | `wallet-gas [--amount <bnb>]` |
 
 ---
 
-## 硬性规则（全局）
+## Hard Rules (Global)
 
-- **永远不要**向用户索取私钥 —— session-key 自动生成
-- **永远不要**后台运行任何会弹 WalletConnect 二维码的命令（`wallet-topup` / `wallet-gas` / `sb invoke` 当钱包不足时）
-- **永远不要**自动重试 `PAYMENT_REJECTED` / `PAYMENT_TIMEOUT` —— 问用户
-- **永远不要**伪造 `presets` / `minTopup` —— 用 `wallet-init` 返回的
-- **永远不要**塞占位符（`"https://example.com"` / `"..."`）替代用户真实输入
-- **匹配 `error.code`，不匹配 `error.message`** —— 文本随版本变
-- **`error.code === "UPDATE_APPLIED"` 时**：CLI 已同步升级，之前命令未执行；告知版本切换（`error.from` → `error.to`），**完全照原样重跑**同条命令；**不要**让用户手动升级
+- **Never** ask the user for a private key — the session-key is auto-generated
+- **Never** background-run any command that opens a WalletConnect QR (`wallet-topup` / `wallet-gas` / `sb invoke` when funds are low)
+- **Never** auto-retry `PAYMENT_REJECTED` / `PAYMENT_TIMEOUT` — ask the user
+- **Never** fabricate `presets` / `minTopup` — use what `wallet-init` returned
+- **Never** stuff placeholders (`"https://example.com"` / `"..."`) in place of real user input
+- **Match `error.code`, not `error.message`** — the text changes between versions
+- **When `error.code === "UPDATE_APPLIED"`**: the CLI auto-upgraded, the previous command did NOT execute; tell the user about the version bump (`error.from` → `error.to`) and **re-run the exact same command verbatim**; **do not** ask the user to upgrade manually
 
 ---
 
-## 必须按字面输出的字符串（Copy Constraints）
+## Verbatim Output Strings (Copy Constraints)
 
-以下首行 / 关键短语必须 **逐字符复现** —— 不改写、不翻译、不加装饰：
+The first lines / key phrases below must be **reproduced character-for-character** — no rewording, no translation, no decoration:
 
-| 阶段 | 必须按字面的行 |
+| Phase | Verbatim line |
 | --- | --- |
 | Opening Line | `> Let me check the environment first.` |
-| Phase 1 第一行 | `> Pre-check in progress...` |
-| Phase 1 安装提示 | `> Installing aigateway...` |
-| Phase 2 第一行 | `> Topping up wallet...` |
-| Phase 2 成功 header | `✅ Wallet prepared` |
-| Phase 4.1 sb invoke 第一行 | `> Invoking {model_id}...` |
-| Phase 3.2 候选列表 header | `✨ 可用 model（{category 中文名}）` |
-| Phase 3.2 推荐项后缀 | `← 推荐` |
-| Phase 3.2 候选行格式 | `{#}  {model_id}  ${price}{unit}` |
-| Phase 5.2 通用成功 header | `✅ Done` |
-| Phase 5.2 Powered 行 | `🧩 Powered by Skillboss · {model_id}` |
-| Phase 5.2 Path 行 | `📁 Path        {localPath}` |
-| Phase 5.2 Format 行 | `🎨 Format      {FORMAT}` |
-| Phase 5.2 Dimensions 行 | `📐 Dimensions  {width} × {height}` |
-| Phase 5.2 Size 行 | `💾 Size        {sizeHuman}` |
-| Phase 5.2 Tx 行 | `🔗 Tx          {transaction}` |
-| Phase 5.2 视频 Duration 行 | `⏱  Duration    {duration}s` |
-| Phase 5.2 音频 Duration 行 | `🎵 Duration    {duration}s` |
-| Phase 5.2 Top-up 行（条件） | `💸 Top-up      {initial} → {before} USDT (+{topup})` |
-| Phase 5.2 Charged 行 | `💰 Charged     {before} → {after} USDT (−{charged})` |
-| Phase 6 提现第一行 | `> Reclaiming funds...` |
-| Phase 6 提现目标行 | `To: main wallet ({main前3}...{main_last4})` |
-| Phase 6 提现状态行 | `Status: completed` |
+| Phase 1 first line | `> Pre-check in progress...` |
+| Phase 1 install hint | `> Installing aigateway...` |
+| Phase 2 first line | `> Topping up wallet...` |
+| Phase 2 success header | `✅ Wallet prepared` |
+| Phase 4.1 sb invoke first line | `> Invoking {model_id}...` |
+| Phase 3.2 candidate header | `✨ Available models ({category})` |
+| Phase 3.2 recommended suffix | `← Recommended` |
+| Phase 3.2 candidate row format | `{#}  {model_id}  ${price}{unit}` |
+| Phase 5.2 generic success header | `✅ Done` |
+| Phase 5.2 Powered line | `🧩 Powered by Skillboss · {model_id}` |
+| Phase 5.2 Path line | `📁 Path        {localPath}` |
+| Phase 5.2 Format line | `🎨 Format      {FORMAT}` |
+| Phase 5.2 Dimensions line | `📐 Dimensions  {width} × {height}` |
+| Phase 5.2 Size line | `💾 Size        {sizeHuman}` |
+| Phase 5.2 Tx line | `🔗 Tx          {transaction}` |
+| Phase 5.2 video Duration line | `⏱  Duration    {duration}s` |
+| Phase 5.2 audio Duration line | `🎵 Duration    {duration}s` |
+| Phase 5.2 Top-up line (conditional) | `💸 Top-up      {initial} → {before} USDT (+{topup})` |
+| Phase 5.2 Charged line | `💰 Charged     {before} → {after} USDT (−{charged})` |
+| Phase 6 withdraw first line | `> Reclaiming funds...` |
+| Phase 6 withdraw destination line | `To: main wallet ({main first 3}...{main last 4})` |
+| Phase 6 withdraw status line | `Status: completed` |
 
-**地址渲染规则**：占位符 `{addr前3}` / `{session前3}` / `{main前3}` 必须替换为**地址真实的前 3 字符**（不要写死 `0x0`）；`{last4}` 等是后 4 字符。例如：
-- 地址 `0xAbC123…DEF7` → `0xA...DEF7`
-- 地址 `0x000000…4567` → `0x0...4567`
-- 地址 `0xc0FFee…BEEF` → `0xc...BEEF`
-
----
-
-## 常见 Agent 错误（Anti-patterns）
-
-> 完整 `error.code` 列表与处置见 Phase 5.4。下面只是 Agent 容易踩的坑：
-
-- 凭记忆猜 `model_id` —— 一定要先跑 `aigateway sb tools` 拿当前 catalog
-- 把任务类别名当 model_id（如 `--model tts`）—— 必须用具体 vendor/model（如 `--model minimax/speech-01-turbo`）
-- 给依赖 `image_url` / `file_url` 的 model 传本地路径 —— 必须是公开可访问的 URL
-- 用占位符替代用户真实输入 —— 缺字段必须问用户
+**Address rendering rule**: placeholders `{addr first 3}` / `{session first 3}` / `{main first 3}` must be replaced with the **actual first 3 characters** of the address (don't hard-code `0x0`); `{last 4}` etc. are the last 4 chars. For example:
+- Address `0xAbC123…DEF7` → `0xA...DEF7`
+- Address `0x000000…4567` → `0x0...4567`
+- Address `0xc0FFee…BEEF` → `0xc...BEEF`
 
 ---
 
-**一个 session 钱包。一份 x402 协议。200+ 个工具。零摩擦付费。**
+## Common Agent Mistakes (Anti-patterns)
+
+> The full list of `error.code` and how to handle them is in Phase 5.4. Below are just the traps the agent commonly falls into:
+
+- Guessing `model_id` from memory — always fetch the current catalog with `aigateway sb tools` first
+- Using a category name as `model_id` (e.g. `--model tts`) — must use a specific vendor/model (e.g. `--model minimax/speech-01-turbo`)
+- Passing a local path to a model that requires `image_url` / `file_url` — must be a publicly accessible URL
+- Filling placeholders in place of real user input — missing fields must be asked
+
+---
+
+**One session wallet. One x402 protocol. 200+ tools. Zero-friction payments.**

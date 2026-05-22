@@ -16,11 +16,9 @@ AEON and **BNB Chain** are launching the **AI Agent Campaign**, opening up a nat
 
 Agents pay with BNB-native assets through AEON's infrastructure. Every API call, every model inference, every skill invocation — settled seamlessly, no human in the loop.
 
-**🎁 First 1,000 users get $5 USDT in free credits** to start using AEON Skills and experience what agentic commerce actually feels like.
+**🎁 $5 off every top-up during the campaign** — pick any package (6 / 10 / 20 / 50 U), the discount applies automatically at `aigateway wallet-topup`. e.g. top up 10 U → pay 5 USDT, get 10 U.
 
 Build agents that don't just think — but **transact**.
-
-→ **[Claim your $5 free credits (Google Form)](https://docs.google.com/forms/d/e/1FAIpQLSe8WF6-Y8Sh2AEC_hEGScyl_gQRahPYWPMDewdXJlfeVENENg/viewform?usp=publish-editor)** · Deploy your agent. Let it run.
 
 ---
 
