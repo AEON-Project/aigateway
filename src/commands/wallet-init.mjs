@@ -12,8 +12,9 @@
  *   - data.needsTopup=true → wallet-topup must run first (the envelope includes presets / minTopup / reason)
  *   - data.needsTopup=false → can proceed directly to sb invoke
  */
-import { loadConfig, saveConfig, getOrCreateDeviceId } from "../config.mjs";
-import { getWalletBalance, getAllowance } from "../balance.mjs";
+import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
+import { getCombinedBalance, getAllowance } from "../balance.mjs";
+import { checkCouponStatus } from "../coupon.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
   MIN_TOPUP_USDT,
@@ -53,14 +54,24 @@ export async function initWallet(opts) {
     // A freshly created wallet is guaranteed to be empty; skip the chain query to save ~500ms.
     logInfo("Fresh wallet — skipping balance lookup (assumed empty).");
   } else {
+    // 先问服务端活动是否进行中 → BNA 是否计入 U (活动下架同步生效, 客户端无需发版)
+    const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+    let campaignActive = false;
+    if (serviceUrl) {
+      try {
+        const st = await checkCouponStatus({ serviceUrl, userAddress: config.address });
+        campaignActive = st.ok && st.campaignActive === true;
+      } catch {
+        // 服务端不可达 → 保守按活动关闭, 仅显示 USDT
+      }
+    }
+
     try {
-      const bal = await getWalletBalance(config.privateKey, { withToken: true });
-      const usdtOnly = parseFloat(bal.usdt);
-      const tokenOnly = parseFloat(bal.token || "0");
-      usdtNum = usdtOnly + tokenOnly;
-      usdt = usdtNum.toString();
+      const bal = await getCombinedBalance(config.privateKey, { campaignActive });
+      usdt = bal.usdt;          // 已是合并后总 U (campaignActive=true 含 BNA, 否则纯 USDT)
+      usdtNum = parseFloat(usdt);
       bnb = bal.bnb;
-      logInfo(`Balance: ${usdt} U, ${bnb} BNB`);
+      logInfo(`Balance: ${usdt} U, ${bnb} BNB${campaignActive ? "  (含活动 BNA)" : ""}`);
       allowance = await getAllowance(config.address);
       logInfo(`Allowance: ${allowance === 0n ? "0 (approve required)" : "already approved"}`);
     } catch (e) {

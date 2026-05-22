@@ -17,6 +17,7 @@ import { createX402Api, decodePaymentResponse, fetchPaymentRequirements, selectA
 import { resolve } from "../config.mjs";
 import { getWalletBalance, getAllowance } from "../balance.mjs";
 import { USDT_BSC } from "../constants.mjs";
+import { checkCouponStatus } from "../coupon.mjs";
 import { parseUnits } from "viem";
 import {
   fundSessionKey,
@@ -183,21 +184,28 @@ export async function invoke(opts) {
   let needGas = false;
   let sessionAddress;
   let topupAmount = null;
-  let balanceInitialUsdt = null;      // U 总额 (USDT + BNA)
+  let balanceInitialUsdt = null;      // 统一 U (= USDT + BNA when campaignActive, USDT only otherwise)
   let balanceBeforeChargeUsdt = null;
+  let campaignActive = false;
   let paymentReq;
   let requiredUsdt;
   let paymentMethod = "USDT"; // "USDT" | "COUPON" — 内部诊断用
 
   try {
-    const { address, usdt, bnb, bnbRaw, token, tokenRaw, usdtRaw } = await getWalletBalance(privateKey, { withToken: true });
+    const bal = await getWalletBalance(privateKey, { withToken: true });
+    const { address, usdt, bnb, bnbRaw, token, tokenRaw, usdtRaw } = bal;
     sessionAddress = address;
-    const combinedU = (parseFloat(usdt) + parseFloat(token || "0")).toString();
+    // 拿到 address 后查 status (顺便缓存 campaignActive 用于 envelope 余额合并)
+    const status = await checkCouponStatus({ serviceUrl, userAddress: address }).catch(() => ({ ok: false }));
+    campaignActive = status.ok && status.campaignActive === true;
+    const combinedU = campaignActive
+      ? (parseFloat(usdt) + parseFloat(token || "0")).toString()
+      : usdt;
     balanceInitialUsdt = combinedU;
     balanceBeforeChargeUsdt = combinedU;
 
     logInfo(`Wallet: ${address}`);
-    logInfo(`Balance: ${usdt} USDT, ${token || "0"} BNA, ${bnb} BNB`);
+    logInfo(`Balance: ${combinedU} U${campaignActive ? "  (含 BNA)" : ""}, ${bnb} BNB`);
 
     // 按余额选币种
     const selection = selectAcceptByBalance(
@@ -333,7 +341,9 @@ export async function invoke(opts) {
     logInfo("Re-checking wallet balance...");
     try {
       const { usdt, bnbRaw, token } = await getWalletBalance(privateKey, { withToken: true });
-      balanceBeforeChargeUsdt = (parseFloat(usdt) + parseFloat(token || "0")).toString();
+      balanceBeforeChargeUsdt = campaignActive
+        ? (parseFloat(usdt) + parseFloat(token || "0")).toString()
+        : usdt;
       const usdtNum = parseFloat(usdt);
       if (needGas && bnbRaw === 0n) {
         return {
@@ -416,7 +426,9 @@ export async function invoke(opts) {
   let balanceAfterUsdt = null;
   try {
     const after = await getWalletBalance(privateKey, { withToken: true });
-    balanceAfterUsdt = (parseFloat(after.usdt) + parseFloat(after.token || "0")).toString();
+    balanceAfterUsdt = campaignActive
+      ? (parseFloat(after.usdt) + parseFloat(after.token || "0")).toString()
+      : after.usdt;
   } catch (e) {
     logInfo(`Post-payment balance check failed: ${e.message}`);
   }

@@ -17,7 +17,7 @@
  *   7. Re-query balance / allowance / token 并返回最终状态.
  */
 import { resolve, getOrCreateDeviceId } from "../config.mjs";
-import { getWalletBalance, getAllowance } from "../balance.mjs";
+import { getWalletBalance, getAllowance, getCombinedBalance } from "../balance.mjs";
 import {
   fundSessionKey,
   approveFacilitator,
@@ -45,18 +45,10 @@ export async function topup(opts) {
     return;
   }
 
-  // 对外只暴露统一 "U" (= USDT + BNA token), 不区分细分币种
-  let address, usdt, bnb, bnbRaw, token, tokenRaw;
-  let usdtOnly; // USDT 单独数值, 内部用于决定 actualPay 实际转账金额
+  // 先查 session 地址 (只需 USDT/BNB, 不查 token 因为还没确定 campaignActive)
+  let preBal;
   try {
-    const bal = await getWalletBalance(privateKey, { withToken: true });
-    address = bal.address;
-    bnb = bal.bnb;
-    bnbRaw = bal.bnbRaw;
-    token = bal.token || "0";
-    tokenRaw = bal.tokenRaw;
-    usdtOnly = bal.usdt;
-    usdt = (parseFloat(bal.usdt) + parseFloat(token)).toString();
+    preBal = await getWalletBalance(privateKey, { withToken: false });
   } catch (e) {
     emitErr("wallet-topup", "BALANCE_CHECK_FAILED", {
       message: `Balance check failed: ${e.message}`,
@@ -64,28 +56,32 @@ export async function topup(opts) {
     });
     return;
   }
-  const usdtNum = parseFloat(usdt);
+  const address = preBal.address;
   logInfo(`Wallet:    ${address}`);
-  logInfo(`Balance:   ${usdt} U, ${bnb} BNB`);
   logInfo(`App ID:    ${appId}`);
 
-  // ─── Coupon eligibility probe ───────────────────────────────────────────
+  // ─── Coupon eligibility probe (顺便拿 campaignActive) ────────────────────
   //   claimed=false                                  → 优惠模式 (套餐 - 5 = 实付)
   //   claimed=true + mintStatus ∈ {FAIL, FAILED}     → 优惠模式 (服务端允许 retry mint)
   //   claimed=true + mintStatus ∈ {SUCCESS,INIT,PENDING} → 普通充值
   //   服务端不可达                                    → 普通充值 (降级)
   let couponEligible = false;
   let couponCampaignId = null;
+  let campaignActive = false;
   if (serviceUrl) {
     logInfo("Checking coupon eligibility...");
     const status = await checkCouponStatus({ serviceUrl, userAddress: address });
     if (status.ok) {
+      campaignActive = status.campaignActive === true;
       const failedMint = status.claimed && (status.mintStatus === "FAILED" || status.mintStatus === "FAIL");
-      couponEligible = !status.claimed || failedMint;
+      // 活动关闭时不再允许领取 (即使 status.claimed=false)
+      couponEligible = campaignActive && (!status.claimed || failedMint);
       couponCampaignId = status.campaignId || null;
       if (couponEligible) {
         const hint = failedMint ? "previous mint FAILED, retrying" : "first-time campaign claim";
         logInfo(`🎁 Coupon available: ${COUPON_AMOUNT_USDT} U auto-applied (${hint}).`);
+      } else if (!campaignActive) {
+        logInfo(`Campaign closed (status=CLOSED/PAUSED); regular top-up flow.`);
       } else {
         logInfo(`Coupon already claimed (mintStatus=${status.mintStatus || "?"}); regular top-up flow.`);
       }
@@ -93,6 +89,14 @@ export async function topup(opts) {
       logInfo(`Coupon status unreachable (${status.errorMsg}); falling back to regular top-up.`);
     }
   }
+
+  // 拿到 campaignActive 后再合并余额 (campaignActive=false 时 token 不计入 U)
+  const bal = await getCombinedBalance(privateKey, { campaignActive });
+  const usdt = bal.usdt;          // 统一 U 总额
+  const usdtNum = parseFloat(usdt);
+  const bnb = bal.bnb;
+  const bnbRaw = bal.bnbRaw;
+  logInfo(`Balance:   ${usdt} U, ${bnb} BNB${campaignActive ? "  (含 BNA)" : ""}`);
 
   logInfo("Checking facilitator allowance...");
   let allowance;
@@ -301,13 +305,13 @@ export async function topup(opts) {
     }
   }
 
-  // Final balance + allowance re-check (合并 USDT + BNA → 统一 U)
+  // Final balance + allowance re-check (按 campaignActive 决定是否合并 BNA)
   let finalUsdt = usdt;
   let finalBnb = bnb;
   let finalAllowance = allowance;
   try {
-    const final = await getWalletBalance(privateKey, { withToken: true });
-    finalUsdt = (parseFloat(final.usdt) + parseFloat(final.token || "0")).toString();
+    const final = await getCombinedBalance(privateKey, { campaignActive });
+    finalUsdt = final.usdt;
     finalBnb = final.bnb;
     finalAllowance = await getAllowance(address);
   } catch (e) {

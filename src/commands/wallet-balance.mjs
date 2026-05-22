@@ -1,9 +1,11 @@
 import { resolve, loadConfig } from "../config.mjs";
-import { getWalletBalance, getBalanceByAddress } from "../balance.mjs";
+import { getCombinedBalance, getBalanceByAddress } from "../balance.mjs";
+import { checkCouponStatus } from "../coupon.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 export async function wallet(opts) {
   const privateKey = resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
+  const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
   const { appId } = opts;
 
   if (!privateKey) {
@@ -13,10 +15,20 @@ export async function wallet(opts) {
 
   try {
     const config = loadConfig();
-    const { address, usdt: usdtRawStr, bnb, usdtRaw, token, tokenRaw } = await getWalletBalance(privateKey, { withToken: true });
 
-    // 用户视角: BNA token 等价于 USDT (1:1 U). 对外只暴露统一总额, 不区分两个币种.
-    const usdt = (parseFloat(usdtRawStr) + parseFloat(token || "0")).toString();
+    // 先问服务端活动是否进行中 → 决定 BNA 是否计入 U.
+    // 活动下架时服务端把 status=CLOSED, 客户端 token 自动不计入 (无需发版).
+    let campaignActive = false;
+    if (serviceUrl && config.address) {
+      try {
+        const status = await checkCouponStatus({ serviceUrl, userAddress: config.address });
+        campaignActive = status.ok && status.campaignActive === true;
+      } catch {
+        // 服务端不可达 → 保守按活动关闭处理 (不显示 BNA)
+      }
+    }
+
+    const { address, usdt, bnb, usdtRaw, tokenRaw } = await getCombinedBalance(privateKey, { campaignActive });
 
     const result = {
       appId,

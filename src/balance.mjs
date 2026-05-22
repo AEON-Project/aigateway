@@ -116,6 +116,40 @@ export async function getTokenBalance(address) {
 }
 
 /**
+ * 查钱包统一 U 余额: USDT + (campaignActive ? BNA : 0).
+ * - campaignActive=true  → 活动期间, BNA 与 USDT 1:1 等价 U
+ * - campaignActive=false → 活动下架, 钱包里的 BNA 不再计入 U (服务端 x402 也不会接受 BNA 支付)
+ *
+ * 服务端通过 /open/api/coupon/status.campaignActive 控制, 客户端实时跟随, 无需发版.
+ *
+ * @param {string} privateKey
+ * @param {{ campaignActive?: boolean }} [opts]
+ * @returns {Promise<{ address, usdt, bnb, bnbRaw, usdtRaw, token, tokenRaw }>}
+ *          usdt 字段返回的是 **合并后总 U** (USDT + BNA 或 USDT only),
+ *          token/tokenRaw 仍返回链上原始 BNA 余额 (内部对账用; 对外不应单独显示)
+ */
+export async function getCombinedBalance(privateKey, opts = {}) {
+  const campaignActive = opts.campaignActive === true;
+  const bal = await getWalletBalance(privateKey, { withToken: campaignActive });
+  const tokenStr = bal.token || "0";
+  const tokenRaw = bal.tokenRaw || 0n;
+  const combinedU = campaignActive
+    ? (parseFloat(bal.usdt) + parseFloat(tokenStr)).toString()
+    : bal.usdt;
+  return {
+    address: bal.address,
+    usdt: combinedU,        // 统一 U 总额 (对外字段)
+    usdtRaw: bal.usdtRaw,   // 纯 USDT raw (内部用)
+    usdtOnly: bal.usdt,     // 纯 USDT 字符串 (内部用)
+    bnb: bal.bnb,
+    bnbRaw: bal.bnbRaw,
+    token: tokenStr,        // BNA 余额 (campaignActive=false 时为 "0")
+    tokenRaw,
+    campaignActive,
+  };
+}
+
+/**
  * Query the session key's USDT allowance for the facilitator.
  * @param {string} ownerAddress - session key address
  * @returns {bigint} current allowance (in wei)
