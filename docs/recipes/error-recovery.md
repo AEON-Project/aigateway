@@ -7,7 +7,9 @@ Map each `error.code` returned by the envelope to a concrete recovery action. Us
 | `WALLET_NOT_CONFIGURED` | 1 | Run `aigateway wallet-init` once (auto-creates a local session wallet). |
 | `SERVICE_URL_MISSING` | 1 | Override via env `AIGATEWAY_SERVICE_URL`. The default service URL is wired into the CLI for production; this should never trigger in normal use. |
 | `AMOUNT_INVALID` | 1 | Caller bug — input must be a positive numeric string (used by `wallet-topup`, `wallet-gas`, `wallet-withdraw`, `--topup-amount`). |
-| `AMOUNT_EXCEEDS_BALANCE` | 1 | `wallet-withdraw --amount` exceeded available USDT. Use the smaller of requested vs. `error.available`. |
+| `AMOUNT_EXCEEDS_BALANCE` | 1 | `wallet-withdraw --amount` exceeded available balance of `--token`. `error.token` says which asset; use smaller of requested vs. `error.available`. |
+| `NEEDS_AMOUNT` | 1 | Non-TTY `wallet-withdraw` requires both `--amount <n>` and `--token <USDT\|BNB>`. Re-run with both. |
+| `INVALID_TOKEN` | 1 | `wallet-withdraw --token` must be `USDT` or `BNB`. |
 | `INSUFFICIENT_USDT` | 1 | Top-up failed or the chosen `--topup-amount` was still below the call's required USDT. Surface `error.required` / `error.available`; ask the user to retry with a larger top-up. |
 | `INSUFFICIENT_BNB` | 1 | Approve / withdraw needs BNB for gas. Run `aigateway wallet-gas` (WalletConnect, must be interactive), then retry. |
 | `NO_FUNDS` | 1 | Nothing to withdraw. Inform the user; suggest `wallet-topup` if relevant. |

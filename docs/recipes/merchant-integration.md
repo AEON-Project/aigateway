@@ -251,7 +251,7 @@ Never invoke real paid commands in CI. Wrap your test fixtures around invalid-in
 | Session wallet USDT balance | Realtime / hourly | `wallet-balance` |
 | Session wallet BNB balance | When needed (withdraw only) | `wallet-balance` |
 | Top-up (manual, workstation) | When USDT is low | `wallet-topup --amount <n>` |
-| Withdraw to merchant treasury | Monthly / quarterly | `wallet-withdraw --to <treasury>` |
+| Withdraw to merchant treasury | Monthly / quarterly | `wallet-withdraw --amount <n> --token USDT --to <treasury>` (one asset per call; run again with `--token BNB` to reclaim gas) |
 | Auto version upgrade | Automatic | (handled by `src/update-check.mjs`) |
 | Reconciliation | Per settlement | Use `envelope.data.transaction` / `paymentResponse.txHash` to match on-chain + backend records |
 

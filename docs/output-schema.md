@@ -208,13 +208,18 @@ Failure shapes carry extra fields per code, e.g.:
 
 ### `wallet-withdraw`
 
+Withdraws a single asset (USDT or BNB) per invocation. The campaign reward token (BNA) is non-withdrawable and is not surfaced in this envelope.
+
 ```json
 {
   "to": "0x...",
-  "transactions": { "usdt": "0x..." | null, "bnb": "0x..." | null },
+  "token": "USDT" | "BNB",
+  "transaction": "0x..." | null,
   "remaining": { "usdt": "0.0", "bnb": "0.0" }
 }
 ```
+
+`transaction` is `null` when the user entered `0` in interactive mode (no-op).
 
 ### `clean`
 

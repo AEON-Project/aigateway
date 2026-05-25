@@ -95,9 +95,10 @@ program
 
 program
   .command("wallet-withdraw")
-  .description("Withdraw USDT and remaining BNB from session key back to main wallet")
+  .description("Withdraw a single asset (USDT or BNB) from session key back to main wallet; interactive when no args")
   .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
-  .option("--amount <usdt>", "USDT amount to withdraw (default: all)")
+  .option("--amount <value>", "Amount to withdraw (number or 'all'); requires --token")
+  .option("--token <symbol>", "Token to withdraw: USDT or BNB; requires --amount")
   .option("--to <address>", "Override destination address")
   .action(async (opts) => {
     const { withdraw } = await import("../src/commands/wallet-withdraw.mjs");

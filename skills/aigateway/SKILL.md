@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.3.2"
+  version: "0.3.3"
   author: AEON-Project
   openclaw:
     requires:
@@ -83,7 +83,7 @@ All paid calls share the same **session-key wallet**, which is funded once via W
 > - **`wallet-init`** *(local, free)*: check / create the local session-key, return ready / created / needsTopup status
 > - **`wallet-topup`** *(WalletConnect, one-time)*: top up USDT (min 5 USDT, presets 5/10/20/50) + 0.0003 BNB for approve gas, session-key broadcasts `ERC20.approve(facilitator, MaxUint256)`. Subsequent paid calls all reuse this allowance and are gasless
 > - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance it auto-falls back to the `wallet-topup` flow
-> - **`wallet-withdraw`**: session-key broadcasts ERC20 + BNB transfer on-chain — requires a small BNB for gas
+> - **`wallet-withdraw`**: session-key broadcasts a single ERC20 *or* BNB transfer on-chain (one asset per call) — USDT withdraw requires a small BNB for gas; BNA activity token is not withdrawable
 > - **`wallet-gas`**: BNB-only transfer (used when `wallet-withdraw` reports "No BNB for gas")
 
 ---
@@ -517,10 +517,13 @@ aigateway wallet-balance
 
 ### Withdraw
 
+One asset per call (USDT or BNB). The campaign reward token (BNA) is non-withdrawable and can only be spent via `sb invoke`.
+
 ```bash
-aigateway wallet-withdraw                            # all USDT → mainWallet
-aigateway wallet-withdraw --amount <usdt>            # specific amount
-aigateway wallet-withdraw --to 0x...                 # specific destination
+aigateway wallet-withdraw                                       # Interactive: shows balance breakdown → select asset → enter amount
+aigateway wallet-withdraw --amount <n> --token USDT             # Non-interactive USDT withdraw; --amount accepts a number or "all"
+aigateway wallet-withdraw --amount <n> --token BNB              # Non-interactive BNB withdraw
+aigateway wallet-withdraw --amount 1 --token USDT --to 0x...    # Custom destination
 ```
 
 Render **verbatim**:
@@ -531,7 +534,7 @@ Render **verbatim**:
 From: {session first 3}...{session last 4}
 To: main wallet ({main first 3}...{main last 4})
 
-Amount: {amount} USDT
+Amount: {amount} {token}
 Status: completed
 ```
 
@@ -540,7 +543,9 @@ The "main wallet" literal label must be preserved.
 | Edge `error.code` | Action |
 | --- | --- |
 | `NO_MAIN_WALLET` | Ask for the destination address, retry with `--to <address>` |
-| `INSUFFICIENT_BNB` (on withdraw) | Run `aigateway wallet-gas` first |
+| `NEEDS_AMOUNT` | Non-TTY call must supply both `--amount` and `--token`; neither alone is enough |
+| `INVALID_TOKEN` | `--token` must be `USDT` or `BNB` |
+| `INSUFFICIENT_BNB` (on USDT withdraw) | Run `aigateway wallet-gas` first |
 | `NO_FUNDS` | Tell the user there are no withdrawable funds |
 
 ### Refill BNB
@@ -561,7 +566,7 @@ aigateway wallet-init                              # pre-check / create wallet, 
 aigateway wallet-topup [--amount <usdt>]           # WalletConnect top-up + first-time approve
 aigateway wallet-balance                           # re-check balance
 aigateway wallet-gas [--amount <bnb>]              # refill session-key BNB
-aigateway wallet-withdraw [--to <addr>] [--amount <usdt>]   # withdraw
+aigateway wallet-withdraw [--amount <n> --token <USDT|BNB>] [--to <addr>]   # withdraw one asset per call; no args = TTY prompt
 
 # Tool catalog (live from server)
 aigateway sb tools                                 # live catalog fetch
@@ -600,7 +605,7 @@ Full schema: [docs/output-schema.md](../../docs/output-schema.md), [docs/exit-co
 | Top-up / fund wallet | `wallet-topup --amount <n>` |
 | Any x402 paid tool (image / video / audio / search / scrape / email / SMS / document / UI / finance / utility …) | **First `aigateway sb tools` for catalog**, then `sb invoke --model <id> --inputs '<json>'` |
 | Balance lookup | `wallet-balance` |
-| Withdraw | `wallet-withdraw [--to <addr>] [--amount <n>]` |
+| Withdraw | `wallet-withdraw [--amount <n> --token <USDT\|BNB>] [--to <addr>]` (one asset per call; no args = interactive prompt) |
 | Refill BNB (for withdraw) | `wallet-gas [--amount <bnb>]` |
 
 ---

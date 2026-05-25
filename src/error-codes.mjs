@@ -22,6 +22,8 @@ export const ERROR_CODES = {
   INSUFFICIENT_BNB:       { exit: 1, message: "Insufficient BNB for gas." },
   NO_FUNDS:               { exit: 1, message: "No funds available." },
   NO_MAIN_WALLET:         { exit: 1, message: "No main wallet address configured. Use --to <address>." },
+  NEEDS_AMOUNT:           { exit: 1, message: "Non-interactive withdraw requires both --amount and --token." },
+  INVALID_TOKEN:          { exit: 1, message: "--token must be USDT or BNB." },
   MISSING_MODEL:          { exit: 1, message: "Missing --model. Provide a tool model id (see references/tools.md)." },
   MISSING_INPUTS:         { exit: 1, message: "Missing --inputs. Provide a JSON object or @path/to/file.json." },
   INVALID_INPUTS_JSON:    { exit: 1, message: "Failed to parse --inputs as JSON." },

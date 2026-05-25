@@ -20,7 +20,16 @@
       "Bash(node --check src/commands/wallet-balance.mjs)",
       "Bash(node --check src/commands/wallet-topup.mjs)",
       "Bash(node bin/cli.mjs wallet-balance --legacy-output)",
-      "Bash(node bin/cli.mjs coupon-claim --legacy-output)"
+      "Bash(node bin/cli.mjs coupon-claim --legacy-output)",
+      "Bash(node --check src/commands/wallet-withdraw.mjs)",
+      "Bash(node --check src/error-codes.mjs)",
+      "Bash(node bin/cli.mjs wallet-withdraw --help)",
+      "Read(//private/tmp/**)",
+      "Bash(AIGATEWAY_CONFIG_DIR=/tmp/aigateway-empty-test node /Users/yuanyong/work/aeon/aigateway/bin/cli.mjs wallet-withdraw --amount 1 --token USDT)",
+      "Bash(node bin/cli.mjs wallet-withdraw --amount 1)",
+      "Bash(node bin/cli.mjs wallet-withdraw --amount 1 --token DOGE)",
+      "Bash(node bin/cli.mjs wallet-withdraw)",
+      "Bash(node --check /Users/yuanyong/work/aeon/aigateway/src/commands/wallet-withdraw.mjs)"
     ]
   }
 }
