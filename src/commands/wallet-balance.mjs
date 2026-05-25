@@ -16,25 +16,29 @@ export async function wallet(opts) {
   try {
     const config = loadConfig();
 
-    // 先问服务端活动是否进行中 → 决定 BNA 是否计入 U.
-    // 活动下架时服务端把 status=CLOSED, 客户端 token 自动不计入 (无需发版).
+    // Ask the server whether the campaign is active → decides if reward token counts toward U.
+    // When the server marks status=CLOSED, the client stops counting the token automatically
+    // (no client re-deploy required).
     let campaignActive = false;
     if (serviceUrl && config.address) {
       try {
         const status = await checkCouponStatus({ serviceUrl, userAddress: config.address });
         campaignActive = status.ok && status.campaignActive === true;
       } catch {
-        // 服务端不可达 → 保守按活动关闭处理 (不显示 BNA)
+        // Service unreachable → conservatively treat as campaign closed (reward not shown).
       }
     }
 
-    const { address, usdt, bnb, usdtRaw, tokenRaw } = await getCombinedBalance(privateKey, { campaignActive });
+    const { address, usdt, usdtOnly, bnb, usdtRaw, tokenRaw, token } = await getCombinedBalance(privateKey, { campaignActive });
 
     const result = {
       appId,
       mode: config.mode || "private-key",
       address,
-      usdt,
+      usdt,                                          // merged U total
+      withdrawableUsdt: usdtOnly,                    // pure on-chain USDT
+      campaignReward: campaignActive ? token : null, // activity reward U; null when campaign inactive
+      campaignActive,
       bnb,
       network: "BSC Mainnet (Chain ID: 56)",
     };

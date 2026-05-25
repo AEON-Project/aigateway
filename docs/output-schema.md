@@ -49,17 +49,24 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "appId": "TEST000001",
   "mode": "private-key",
   "address": "0x...",
+  "deviceId": "uuid...",
   "mainWallet": "0x..." | null,
+  "serviceUrl": "https://...",
   "usdt": "5.0",
+  "withdrawableUsdt": "1.0",
+  "campaignReward": "4.0" | null,
+  "campaignActive": true,
   "bnb": "0.0003",
   "allowance": "115792...max" | "0",
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "no_approve" | "chain_check_failed",
   "minTopup": 5,
   "presets": [6, 10, 20, 50],
-  "serviceUrl": "https://..."
+  "chainCheck": "ok" | { "error": "..." }
 }
 ```
+
+`usdt` / `withdrawableUsdt` / `campaignReward` / `campaignActive` have the same semantics as in [`wallet-balance`](#wallet-balance) — see that section for the user-facing rendering rule.
 
 ### `wallet-topup`
 
@@ -184,17 +191,22 @@ Failure shapes carry extra fields per code, e.g.:
 {
   "mode": "private-key",
   "address": "0x...",
-  "usdt": "1.0",
-  "token": "5.0",
-  "totalU": "6.0",
+  "usdt": "6.0",
+  "withdrawableUsdt": "1.0",
+  "campaignReward": "5.0" | null,
+  "campaignActive": true,
   "bnb": "0.0003",
   "network": "BSC Mainnet (Chain ID: 56)",
   "mainWallet": { "address": "0x...", "usdt": "..." }
 }
 ```
 
-- `token` = 优惠活动代币余额 (`CAMPAIGN_TOKEN_ADDRESS`).
-- `totalU` = `usdt + token`, 用户视角下的总资产 (token 与 USDT 1:1 等价 U).
+- `usdt` = merged U total. When `campaignActive: true`, this is `withdrawableUsdt + campaignReward`; otherwise it equals `withdrawableUsdt`.
+- `withdrawableUsdt` = pure on-chain USDT balance — the **only** portion that can be moved to the main wallet via `wallet-withdraw --token USDT`.
+- `campaignReward` = activity reward U (the `CAMPAIGN_TOKEN_ADDRESS` balance). Non-withdrawable; spendable only via `sb invoke`. `null` when `campaignActive: false`.
+- `campaignActive` = whether the server reports the campaign as currently running. When `false`, agents should treat `withdrawableUsdt` as the user-facing balance.
+
+⚠️ When rendering to the end user, **always present `withdrawableUsdt` and `campaignReward` as separate values** when the campaign is active. Never display the merged `usdt` as a single "USDT" number, since the user may then expect the whole amount to be withdrawable.
 
 ### `wallet-gas`
 

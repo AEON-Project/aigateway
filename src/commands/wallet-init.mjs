@@ -41,37 +41,44 @@ export async function initWallet(opts) {
     logInfo(`Wallet: ${config.address}`);
   }
 
-  // On-chain status check
-  //   对外只暴露统一 "U" 余额 (= USDT + BNA token), 不区分细分币种.
+  // On-chain status check.
+  //   usdt = merged U total (USDT + campaign-reward token, when campaign active)
+  //   withdrawableUsdt = pure on-chain USDT only (the actual withdrawable amount)
+  //   campaignReward = activity reward portion (non-withdrawable; null when campaign inactive)
   let usdt = "0";
+  let withdrawableUsdt = "0";
+  let campaignReward = null;
   let bnb = "0";
   let usdtNum = 0;
   let allowance = 0n;
   let chainCheckOk = true;
   let chainCheckError = null;
+  let campaignActive = false;
 
   if (created) {
     // A freshly created wallet is guaranteed to be empty; skip the chain query to save ~500ms.
     logInfo("Fresh wallet — skipping balance lookup (assumed empty).");
   } else {
-    // 先问服务端活动是否进行中 → BNA 是否计入 U (活动下架同步生效, 客户端无需发版)
+    // Ask the server whether the campaign is active → decides if reward token counts toward U.
+    // (Campaign close takes effect server-side; no client re-deploy needed.)
     const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-    let campaignActive = false;
     if (serviceUrl) {
       try {
         const st = await checkCouponStatus({ serviceUrl, userAddress: config.address });
         campaignActive = st.ok && st.campaignActive === true;
       } catch {
-        // 服务端不可达 → 保守按活动关闭, 仅显示 USDT
+        // Service unreachable → conservatively treat as campaign closed (USDT only).
       }
     }
 
     try {
       const bal = await getCombinedBalance(config.privateKey, { campaignActive });
-      usdt = bal.usdt;          // already merged U total (incl. BNA when campaignActive, else pure USDT)
+      usdt = bal.usdt;                        // merged U total (USDT + reward token when active)
+      withdrawableUsdt = bal.usdtOnly;        // pure on-chain USDT (the only withdrawable portion)
+      if (campaignActive) campaignReward = bal.token;
       usdtNum = parseFloat(usdt);
       bnb = bal.bnb;
-      logInfo(`Balance: ${usdt} U, ${bnb} BNB${campaignActive ? "  (incl. campaign BNA)" : ""}`);
+      logInfo(`Balance: ${usdt} U, ${bnb} BNB${campaignActive ? "  (incl. campaign reward)" : ""}`);
       allowance = await getAllowance(config.address);
       logInfo(`Allowance: ${allowance === 0n ? "0 (approve required)" : "already approved"}`);
     } catch (e) {
@@ -97,7 +104,7 @@ export async function initWallet(opts) {
     needsTopup = true;
     topupReason = "chain_check_failed";
   } else if (usdtNum < LOW_BALANCE_THRESHOLD) {
-    // usdtNum 已合并了 BNA token (用户视角下 U 总额)
+    // usdtNum already reflects the merged U total (USDT + reward token from user's perspective).
     needsTopup = true;
     topupReason = "low_balance";
   } else if (allowance === 0n) {
@@ -105,7 +112,7 @@ export async function initWallet(opts) {
     topupReason = "no_approve";
   }
 
-  // device id 在首次 init 时生成,后续 coupon-claim / 审计复用
+  // device id is minted on first init and reused by coupon-claim / audit downstream.
   const deviceId = getOrCreateDeviceId();
 
   const data = {
@@ -117,7 +124,10 @@ export async function initWallet(opts) {
     deviceId,
     mainWallet: config.mainWallet || null,
     serviceUrl: config.serviceUrl || null,
-    usdt,
+    usdt,                          // merged U total (USDT + campaign reward when active)
+    withdrawableUsdt,              // pure on-chain USDT — the only portion that can be withdrawn
+    campaignReward,                // activity reward U (non-withdrawable); null when campaign inactive
+    campaignActive,                // whether the reward portion currently counts toward U
     bnb,
     allowance: allowance.toString(),
     needsTopup,

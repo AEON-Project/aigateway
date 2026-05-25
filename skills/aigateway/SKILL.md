@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.3.3"
+  version: "0.3.4"
   author: AEON-Project
   openclaw:
     requires:
@@ -83,7 +83,7 @@ All paid calls share the same **session-key wallet**, which is funded once via W
 > - **`wallet-init`** *(local, free)*: check / create the local session-key, return ready / created / needsTopup status
 > - **`wallet-topup`** *(WalletConnect, one-time)*: top up USDT (min 5 USDT, presets 5/10/20/50) + 0.0003 BNB for approve gas, session-key broadcasts `ERC20.approve(facilitator, MaxUint256)`. Subsequent paid calls all reuse this allowance and are gasless
 > - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance it auto-falls back to the `wallet-topup` flow
-> - **`wallet-withdraw`**: session-key broadcasts a single ERC20 *or* BNB transfer on-chain (one asset per call) — USDT withdraw requires a small BNB for gas; BNA activity token is not withdrawable
+> - **`wallet-withdraw`**: session-key broadcasts a single ERC20 *or* BNB transfer on-chain (one asset per call) — USDT withdraw requires a small BNB for gas; the campaign reward portion (activity U) is non-withdrawable and stays on the session key for `sb invoke` use
 > - **`wallet-gas`**: BNB-only transfer (used when `wallet-withdraw` reports "No BNB for gas")
 
 ---
@@ -157,7 +157,10 @@ When done, re-run `aigateway wallet-init`.
   "address": "0x...",
   "deviceId": "uuid...",
   "mainWallet": "0x..." | null,
-  "usdt": "5.0",
+  "usdt": "5.0",                   // merged U total (withdrawable USDT + activity reward, when campaign active)
+  "withdrawableUsdt": "1.0",       // pure on-chain USDT — the only portion that can be withdrawn to the main wallet
+  "campaignReward": "4.0" | null,  // activity reward U (non-withdrawable, spendable only via sb invoke); null when campaign inactive
+  "campaignActive": true,
   "bnb": "0.0003",
   "allowance": "115792...max" | "0",
   "needsTopup": false,
@@ -166,6 +169,8 @@ When done, re-run `aigateway wallet-init`.
   "presets": [6, 10, 20, 50]
 }
 ```
+
+**User-facing rendering rule**: When `campaignActive: true` and `campaignReward` is non-null, surface both numbers separately (e.g. "Withdrawable USDT: {withdrawableUsdt}" + "Activity reward: {campaignReward}") — **never present the merged `usdt` value as if it were all withdrawable**. When `campaignActive: false`, show only `withdrawableUsdt` (which equals `usdt`). Do not use the technical term "BNA" in any user-facing output.
 
 ### Decision tree
 
@@ -509,15 +514,30 @@ Then summarize the actual result in **one or two sentences** (top 3 search hits,
 
 ### Balance lookup
 
+Triggered when the user asks something like "check my balance" / "查余额" / "how much USDT do I have?".
+
 ```bash
 aigateway wallet-balance
 ```
 
-`envelope.data`: `{ address, usdt, bnb, mainWallet? }`
+`envelope.data`: `{ address, usdt, withdrawableUsdt, campaignReward, campaignActive, bnb, mainWallet? }`
+
+Render template (translate phrasing to the user's locale; preserve structure):
+
+```
+Wallet ({address first 3}...{last 4}):
+
+- Withdrawable USDT: {withdrawableUsdt}
+- Activity reward: {campaignReward} U  (non-withdrawable; for activity use only)   ← omit this line when campaignActive=false or campaignReward is null
+- BNB: {bnb}  (for USDT withdraw gas)
+- Main wallet: {mainWallet.address first 3}...{last 4}   ← omit this line when mainWallet is null
+```
+
+**Rule**: When `campaignActive: true` and `campaignReward` is non-null, the withdrawable USDT and activity reward MUST be on separate lines. Never present the merged `usdt` value as a single "USDT" number — the user will think the whole amount is withdrawable. When `campaignActive: false`, show only `withdrawableUsdt` (the activity-reward line disappears entirely).
 
 ### Withdraw
 
-One asset per call (USDT or BNB). The campaign reward token (BNA) is non-withdrawable and can only be spent via `sb invoke`.
+One asset per call (USDT or BNB). The campaign reward portion (activity U) is non-withdrawable and can only be spent via `sb invoke` — **never use the term "BNA" in user-facing output**; refer to it as "activity U" or "campaign reward" (translate naturally for the user's locale).
 
 ```bash
 aigateway wallet-withdraw                                       # Interactive: shows balance breakdown → select asset → enter amount
@@ -526,7 +546,22 @@ aigateway wallet-withdraw --amount <n> --token BNB              # Non-interactiv
 aigateway wallet-withdraw --amount 1 --token USDT --to 0x...    # Custom destination
 ```
 
-Render **verbatim**:
+**Pre-prompt (before invoking the command)**: Read `wallet-balance` (or the prior `wallet-init` envelope) and present the breakdown using the dedicated fields, then ask which asset + amount. Example template (translate phrasing to the user's locale; preserve the structure):
+
+```
+Withdrawing — one asset per call:
+
+- Withdrawable USDT: {withdrawableUsdt}
+- Activity reward: {campaignReward} U  (non-withdrawable; for activity use only)   ← omit this line when campaignActive=false or campaignReward is null
+- BNB: {bnb}  (used for USDT withdraw gas)
+- Destination: main wallet ({main first 3}...{main last 4})
+
+Please tell me:
+1. USDT or BNB?
+2. Amount? (you can answer "all")
+```
+
+After the user replies, run `aigateway wallet-withdraw --amount <n> --token <USDT|BNB>` and render the success output **verbatim**:
 
 ```
 > Reclaiming funds...

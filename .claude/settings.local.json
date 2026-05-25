@@ -29,7 +29,9 @@
       "Bash(node bin/cli.mjs wallet-withdraw --amount 1)",
       "Bash(node bin/cli.mjs wallet-withdraw --amount 1 --token DOGE)",
       "Bash(node bin/cli.mjs wallet-withdraw)",
-      "Bash(node --check /Users/yuanyong/work/aeon/aigateway/src/commands/wallet-withdraw.mjs)"
+      "Bash(node --check /Users/yuanyong/work/aeon/aigateway/src/commands/wallet-withdraw.mjs)",
+      "Bash(python3 -m json.tool)",
+      "Bash(node bin/cli.mjs wallet-balance)"
     ]
   }
 }

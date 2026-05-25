@@ -132,7 +132,7 @@ export async function withdraw(opts) {
   logInfo("Balance breakdown:");
   logInfo(`  Withdrawable USDT:     ${balance.usdt}`);
   if (campaignActive) {
-    logInfo(`  Non-withdrawable USDT: ${balance.token}   (campaign reward, spendable only via sb invoke)`);
+    logInfo(`  Non-withdrawable USDT: ${balance.token}   (campaign reward, for activity use only)`);
   }
   logInfo(`  BNB:                   ${balance.bnb}`);
 
