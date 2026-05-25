@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.3.4"
+  version: "0.3.5"
   author: AEON-Project
   openclaw:
     requires:
@@ -170,7 +170,7 @@ When done, re-run `aigateway wallet-init`.
 }
 ```
 
-**User-facing rendering rule**: When `campaignActive: true` and `campaignReward` is non-null, surface both numbers separately (e.g. "Withdrawable USDT: {withdrawableUsdt}" + "Activity reward: {campaignReward}") — **never present the merged `usdt` value as if it were all withdrawable**. When `campaignActive: false`, show only `withdrawableUsdt` (which equals `usdt`). Do not use the technical term "BNA" in any user-facing output.
+**User-facing rendering rule**: When `campaignActive: true` and `campaignReward` is non-null, surface both numbers separately (e.g. "Withdrawable USDT: {withdrawableUsdt}" + "Activity reward: {campaignReward}") — **never present the merged `usdt` value as if it were all withdrawable**. When `campaignActive: false`, show only `withdrawableUsdt` (which equals `usdt`). Refer to the reward portion only as "activity reward" or "campaign reward" — do not expose any underlying token symbol or contract address in user-facing output.
 
 ### Decision tree
 
@@ -537,7 +537,7 @@ Wallet ({address first 3}...{last 4}):
 
 ### Withdraw
 
-One asset per call (USDT or BNB). The campaign reward portion (activity U) is non-withdrawable and can only be spent via `sb invoke` — **never use the term "BNA" in user-facing output**; refer to it as "activity U" or "campaign reward" (translate naturally for the user's locale).
+One asset per call (USDT or BNB). The campaign reward portion (activity U) is non-withdrawable and can only be spent via `sb invoke` — refer to it as "activity U" or "campaign reward" only, and never surface the underlying token symbol or contract address (translate the phrasing to the user's locale).
 
 ```bash
 aigateway wallet-withdraw                                       # Interactive: shows balance breakdown → select asset → enter amount

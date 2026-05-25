@@ -192,7 +192,7 @@ Every command accepts `--app-id <id>` (merchant ID, defaults to `TEST000001`) an
 | **`sb tools`** | Fetch the model catalog from the server in real time (no cache) | `--model <id>` / `--category <key>` / `--tier <price\|quality\|balanced>` |
 | `wallet-balance` | Show the session wallet's USDT + BNB balance | `--private-key <key>` |
 | `wallet-gas` | Transfer BNB from the main wallet to the session key via WalletConnect | `--amount <bnb>` (default `0.001`) |
-| `wallet-withdraw` | Withdraw a single asset (USDT or BNB) from the session key back to the main wallet. Activity token (BNA) is non-withdrawable. No args → interactive prompt. | `--amount <n>` + `--token <USDT\|BNB>` (required together for non-TTY), `--to <address>` |
+| `wallet-withdraw` | Withdraw a single asset (USDT or BNB) from the session key back to the main wallet. The campaign reward portion is non-withdrawable. No args → interactive prompt. | `--amount <n>` + `--token <USDT\|BNB>` (required together for non-TTY), `--to <address>` |
 | `clean` | Uninstall the skill + global package and clear caches | — |
 
 Global flags: `--legacy-output` (legacy JSON shape), `--verbose`, `--quiet`.

@@ -210,7 +210,7 @@ export async function invoke(opts) {
     balanceBeforeChargeUsdt = combinedU;
 
     logInfo(`Wallet: ${address}`);
-    logInfo(`Balance: ${combinedU} U${campaignActive ? "  (incl. BNA)" : ""}, ${bnb} BNB`);
+    logInfo(`Balance: ${combinedU} U${campaignActive ? "  (incl. activity reward)" : ""}, ${bnb} BNB`);
 
     // 按余额 + 活动状态选币种 (campaignActive=false 强制 USDT, 不选 BNA)
     const selection = selectAcceptByBalance(
@@ -229,7 +229,7 @@ export async function invoke(opts) {
     requiredUsdt = paymentReq.amountUsdt;
     paymentMethod = String(paymentReq.asset).toLowerCase() === CAMPAIGN_TOKEN_ADDRESS.toLowerCase() ? "COUPON" : "USDT";
     if (paymentMethod === "COUPON") {
-      logInfo(`💳 Pay with BNA: ${requiredUsdt} (chose ${selection.reason}, asset ${paymentReq.asset})`);
+      logInfo(`💳 Pay with activity reward: ${requiredUsdt} (chose ${selection.reason}, asset ${paymentReq.asset})`);
     } else {
       logInfo(`Pay with USDT: ${requiredUsdt} (chose ${selection.reason}, pay to ${paymentReq.payTo})`);
     }
@@ -249,14 +249,14 @@ export async function invoke(opts) {
     // 优惠券 (COUPON) 走 token, 服务端代理合约通常已 approve, 这里只检查余额.
     // 普通 USDT 走法不变.
     if (paymentMethod === "COUPON") {
-      logInfo(`Payment asset: BNA (${paymentReq.asset})`);
+      logInfo(`Payment asset: activity reward (${paymentReq.asset})`);
       if (tokenNum < requiredUsdt) {
         // 理论不会发生 (上面 selectAcceptByBalance 已经看过余额); 防御性兜底
         return {
           ok: false,
           code: "INSUFFICIENT_TOKEN",
           details: {
-            message: `BNA balance ${token} is insufficient for required ${requiredUsdt}.`,
+            message: `Activity reward balance ${token} is insufficient for required ${requiredUsdt}.`,
             required: requiredUsdt,
             available: token,
             address,
@@ -264,7 +264,7 @@ export async function invoke(opts) {
           },
         };
       }
-      logInfo(`BNA balance sufficient (${token} ≥ ${requiredUsdt}).`);
+      logInfo(`Activity reward balance sufficient (${token} ≥ ${requiredUsdt}).`);
     } else if (allowance >= requiredWei) {
       logInfo("Allowance sufficient, no approve needed.");
     } else {

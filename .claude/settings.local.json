@@ -31,7 +31,8 @@
       "Bash(node bin/cli.mjs wallet-withdraw)",
       "Bash(node --check /Users/yuanyong/work/aeon/aigateway/src/commands/wallet-withdraw.mjs)",
       "Bash(python3 -m json.tool)",
-      "Bash(node bin/cli.mjs wallet-balance)"
+      "Bash(node bin/cli.mjs wallet-balance)",
+      "Read(//tmp/**)"
     ]
   }
 }

@@ -133,7 +133,7 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "raw": { /* upstream vendor response, unwrapped from { payer, transaction, data } */ },
   "paymentResponse": { "txHash": "0x...", "payer": "0x...", "...": "..." },
   "paymentMethod": "USDT" | "COUPON",
-  "paymentToken": "0x55d398...USDT" | "0x76671cD...BNA",
+  "paymentToken": "0x55d398...USDT" | "0x76671c...<campaign-reward>",
   "balance": {
     "initial": "1.0",
     "before": "1.0",
@@ -220,7 +220,7 @@ Failure shapes carry extra fields per code, e.g.:
 
 ### `wallet-withdraw`
 
-Withdraws a single asset (USDT or BNB) per invocation. The campaign reward token (BNA) is non-withdrawable and is not surfaced in this envelope.
+Withdraws a single asset (USDT or BNB) per invocation. The campaign reward portion (activity U) is non-withdrawable and is not surfaced in this envelope.
 
 ```json
 {

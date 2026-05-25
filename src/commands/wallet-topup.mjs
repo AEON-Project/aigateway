@@ -96,7 +96,7 @@ export async function topup(opts) {
   const usdtNum = parseFloat(usdt);
   const bnb = bal.bnb;
   const bnbRaw = bal.bnbRaw;
-  logInfo(`Balance:   ${usdt} U, ${bnb} BNB${campaignActive ? "  (incl. BNA)" : ""}`);
+  logInfo(`Balance:   ${usdt} U, ${bnb} BNB${campaignActive ? "  (incl. activity reward)" : ""}`);
 
   logInfo("Checking facilitator allowance...");
   let allowance;
