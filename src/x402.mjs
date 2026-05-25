@@ -126,40 +126,78 @@ export async function fetchPaymentRequirements(url, options = {}) {
 }
 
 /**
- * 根据钱包余额 + 活动状态从 accepts 列表选币种.
- * 规则:
- *   - campaignActive=false → 强制走 fallback (USDT), 即使 accepts 含 BNA option 也忽略
- *     (服务端理论上不会返回 BNA, 这里是客户端兜底防止脏数据/旧版服务端)
- *   - campaignActive=true  → 优先 BNA (preferredAsset), BNA 余额不足回退 USDT
- *   - accepts 只有一个 → 直接返回 (服务端已替客户端决定)
+ * Pick a payment asset from the 402 `accepts` list based on wallet balance + campaign status.
  *
- * @param {Array<{asset:string, amountUsdt:number, amountWei:string, ...}>} accepts
- * @param {{usdt: bigint, token: bigint}} balances - 钱包余额 (wei)
+ * Rules:
+ *   - campaignActive=false → only choose the USDT fallback. If the only available accept is
+ *     the campaign-reward asset, refuse (return chosen=null).
+ *   - campaignActive=true  → prefer the campaign-reward asset when balance is sufficient,
+ *     otherwise fall back to USDT.
+ *   - In **every** path, the chosen accept must be affordable. If nothing in the list is
+ *     affordable, return chosen=null with a diagnostic — never let the caller sign an
+ *     authorization that's guaranteed to revert on-chain.
+ *
+ * @param {Array<{asset:string, amountUsdt:number, amountWei:string, decimals?:number, payTo?:string}>} accepts
+ * @param {{usdt: bigint, token: bigint}} balances - wallet balance in wei (token = campaign reward)
  * @param {{preferredAsset: string, fallbackAsset: string, campaignActive?: boolean}} prefs
- * @returns {{ chosen: object, reason: "preferred"|"fallback"|"only-one"|"campaign-closed" }}
+ * @returns {{
+ *   chosen: object|null,
+ *   reason: "preferred"|"fallback"|"only-one"|"campaign-closed"|"insufficient-no-fallback"|"no-accepts",
+ *   diagnostic?: { asset: string, kind: "preferred"|"fallback"|"unknown", requiredWei: string, availableWei: string }
+ * }}
  */
 export function selectAcceptByBalance(accepts, balances, prefs) {
-  if (accepts.length === 1) return { chosen: accepts[0], reason: "only-one" };
+  if (!Array.isArray(accepts) || accepts.length === 0) {
+    return { chosen: null, reason: "no-accepts" };
+  }
   const preferLower = String(prefs.preferredAsset || "").toLowerCase();
   const fallbackLower = String(prefs.fallbackAsset || "").toLowerCase();
-  const preferred = accepts.find((a) => String(a.asset).toLowerCase() === preferLower);
-  const fallback = accepts.find((a) => String(a.asset).toLowerCase() === fallbackLower);
 
-  // 活动关闭时, 即便 accepts 含 BNA option 也不选, 强制走 USDT
+  const tagOf = (a) => {
+    const al = String(a.asset).toLowerCase();
+    if (al === preferLower) return "preferred";
+    if (al === fallbackLower) return "fallback";
+    return "unknown";
+  };
+  // "unknown" accepts (anything not preferred/fallback) are conservatively settled against the
+  // USDT balance — we have no way to verify a foreign asset client-side, so we refuse to sign.
+  const balanceFor = (a) => (tagOf(a) === "preferred" ? balances.token : balances.usdt);
+  const canAfford = (a) => {
+    try { return balanceFor(a) >= BigInt(a.amountWei); }
+    catch { return false; }
+  };
+  const diagnostic = (a) => ({
+    asset: a.asset,
+    kind: tagOf(a),
+    requiredWei: String(a.amountWei),
+    availableWei: String(balanceFor(a)),
+  });
+
+  const preferred = accepts.find((a) => tagOf(a) === "preferred");
+  const fallback = accepts.find((a) => tagOf(a) === "fallback");
+
+  // Campaign closed → only USDT is allowed. If only the reward asset is offered, refuse.
   if (prefs.campaignActive === false) {
-    if (fallback) return { chosen: fallback, reason: "campaign-closed" };
-    return { chosen: accepts[0], reason: "campaign-closed" };
+    if (fallback && canAfford(fallback)) return { chosen: fallback, reason: "campaign-closed" };
+    if (fallback) return { chosen: null, reason: "insufficient-no-fallback", diagnostic: diagnostic(fallback) };
+    // No USDT option at all while campaign is closed — refuse rather than sign the reward path.
+    return { chosen: null, reason: "insufficient-no-fallback", diagnostic: diagnostic(accepts[0]) };
   }
 
-  if (preferred) {
-    const needWei = BigInt(preferred.amountWei);
-    if (balances.token >= needWei) {
-      return { chosen: preferred, reason: "preferred" };
-    }
+  // Campaign active → preferred (reward) first, then fallback (USDT).
+  if (preferred && canAfford(preferred)) return { chosen: preferred, reason: "preferred" };
+  if (fallback && canAfford(fallback)) return { chosen: fallback, reason: "fallback" };
+
+  // Single-accept shortcut: only honor it when affordable. The pre-fix early return here would
+  // sign a doomed authorization; never do that.
+  if (accepts.length === 1 && canAfford(accepts[0])) {
+    return { chosen: accepts[0], reason: "only-one" };
   }
-  if (fallback) return { chosen: fallback, reason: "fallback" };
-  // accepts 含有未知 asset, 兜底取第一个
-  return { chosen: accepts[0], reason: "fallback" };
+
+  // Nothing is affordable. Report the deficit against the most user-actionable target —
+  // USDT if it's in the list (user can wallet-topup); otherwise the preferred asset.
+  const target = fallback || preferred || accepts[0];
+  return { chosen: null, reason: "insufficient-no-fallback", diagnostic: diagnostic(target) };
 }
 
 /**

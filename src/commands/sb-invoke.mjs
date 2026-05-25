@@ -201,7 +201,11 @@ export async function invoke(opts) {
     const { address, usdt, bnb, bnbRaw, token, tokenRaw, usdtRaw } = bal;
     sessionAddress = address;
     // 拿到 address 后查 status (顺便缓存 campaignActive 用于 envelope 余额合并)
-    const status = await checkCouponStatus({ serviceUrl, userAddress: address }).catch(() => ({ ok: false }));
+    const status = await checkCouponStatus({
+      serviceUrl,
+      userAddress: address,
+      deviceId: deviceId || undefined,
+    }).catch(() => ({ ok: false }));
     campaignActive = status.ok && status.campaignActive === true;
     const combinedU = campaignActive
       ? (parseFloat(usdt) + parseFloat(token || "0")).toString()
@@ -212,19 +216,60 @@ export async function invoke(opts) {
     logInfo(`Wallet: ${address}`);
     logInfo(`Balance: ${combinedU} U${campaignActive ? "  (incl. activity reward)" : ""}, ${bnb} BNB`);
 
-    // 按余额 + 活动状态选币种 (campaignActive=false 强制 USDT, 不选 BNA)
+    // Pick payment asset by balance + campaign status (campaign closed → force USDT).
     const selection = selectAcceptByBalance(
       paymentReqEnvelope.accepts,
       { usdt: usdtRaw, token: tokenRaw || 0n },
       { preferredAsset: CAMPAIGN_TOKEN_ADDRESS, fallbackAsset: USDT_BSC, campaignActive },
     );
+    // selectAcceptByBalance guarantees the chosen accept is affordable, or returns chosen=null
+    // with a diagnostic. Handle null up front — never let a doomed authorization get signed.
+    let chosenAccept = selection.chosen;
+    if (!chosenAccept) {
+      const diag = selection.diagnostic || {};
+      // Reward-asset insufficient and no USDT fallback in accepts → user can't recover via top-up
+      // (top-up doesn't mint reward token), surface INSUFFICIENT_TOKEN with a retry hint.
+      if (diag.kind === "preferred") {
+        return {
+          ok: false,
+          code: "INSUFFICIENT_TOKEN",
+          details: {
+            message: "Activity reward balance is insufficient and the server did not offer a USDT fallback for this call.",
+            required: diag.requiredWei,
+            available: diag.availableWei,
+            asset: diag.asset,
+            address: sessionAddress,
+            appId,
+            hint: "Retry the call — the server will normally include a USDT option when reward balance is low.",
+          },
+        };
+      }
+      // USDT path is in accepts but balance is short → let the existing needTopup logic handle it.
+      const usdtAccept = paymentReqEnvelope.accepts.find(
+        (a) => String(a.asset).toLowerCase() === USDT_BSC.toLowerCase(),
+      );
+      if (!usdtAccept) {
+        return {
+          ok: false,
+          code: "INVALID_BODY",
+          details: {
+            message: "Server returned 402 accepts in an unsupported shape (no preferred or fallback asset).",
+            accepts: paymentReqEnvelope.accepts,
+            appId,
+          },
+        };
+      }
+      chosenAccept = usdtAccept;
+      logInfo("Reward asset unavailable / unaffordable; routing through USDT (will trigger top-up if balance is short).");
+    }
     paymentReq = {
       ...paymentReqEnvelope,
-      amountUsdt: selection.chosen.amountUsdt,
-      amountWei: selection.chosen.amountWei,
-      decimals: selection.chosen.decimals,
-      asset: selection.chosen.asset,
-      payTo: selection.chosen.payTo,
+      amountUsdt: chosenAccept.amountUsdt,
+      amountWei: chosenAccept.amountWei,
+      decimals: chosenAccept.decimals,
+      asset: chosenAccept.asset,
+      payTo: chosenAccept.payTo,
+      chosenRawAccept: chosenAccept.raw,   // pass-through to signing step (line ~427) to override x402 lib's default accepts[0] pick
     };
     requiredUsdt = paymentReq.amountUsdt;
     paymentMethod = String(paymentReq.asset).toLowerCase() === CAMPAIGN_TOKEN_ADDRESS.toLowerCase() ? "COUPON" : "USDT";
@@ -385,6 +430,12 @@ export async function invoke(opts) {
       return typeof value === "string" ? value : undefined;
     };
     const paymentRequired = httpClient.getPaymentRequiredResponse(getHeader, raw402.data);
+    // The x402 client library picks accepts[0] by default and ignores our selectAcceptByBalance
+    // choice. Narrow `paymentRequired.accepts` to just our chosen accept so the library is
+    // forced to sign the asset we actually have balance for.
+    if (paymentReq.chosenRawAccept && Array.isArray(paymentRequired?.accepts)) {
+      paymentRequired.accepts = [paymentReq.chosenRawAccept];
+    }
     const paymentPayload = await client.createPaymentPayload(paymentRequired);
     const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
 

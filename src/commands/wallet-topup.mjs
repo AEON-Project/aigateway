@@ -70,7 +70,13 @@ export async function topup(opts) {
   let campaignActive = false;
   if (serviceUrl) {
     logInfo("Checking coupon eligibility...");
-    const status = await checkCouponStatus({ serviceUrl, userAddress: address });
+    let earlyDeviceId = "";
+    try { earlyDeviceId = getOrCreateDeviceId(); } catch { /* container/restricted env */ }
+    const status = await checkCouponStatus({
+      serviceUrl,
+      userAddress: address,
+      deviceId: earlyDeviceId || undefined,
+    });
     if (status.ok) {
       campaignActive = status.campaignActive === true;
       const failedMint = status.claimed && (status.mintStatus === "FAILED" || status.mintStatus === "FAIL");

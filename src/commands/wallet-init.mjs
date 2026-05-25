@@ -64,7 +64,13 @@ export async function initWallet(opts) {
     const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
     if (serviceUrl) {
       try {
-        const st = await checkCouponStatus({ serviceUrl, userAddress: config.address });
+        let earlyDeviceId = "";
+        try { earlyDeviceId = getOrCreateDeviceId(); } catch { /* container/restricted env */ }
+        const st = await checkCouponStatus({
+          serviceUrl,
+          userAddress: config.address,
+          deviceId: earlyDeviceId || undefined,
+        });
         campaignActive = st.ok && st.campaignActive === true;
       } catch {
         // Service unreachable → conservatively treat as campaign closed (USDT only).

@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.3.5"
+  version: "0.3.6"
   author: AEON-Project
   openclaw:
     requires:
@@ -81,7 +81,7 @@ All paid calls share the same **session-key wallet**, which is funded once via W
 
 > ⚡ **Two-step wallet readiness, then pay-per-call**:
 > - **`wallet-init`** *(local, free)*: check / create the local session-key, return ready / created / needsTopup status
-> - **`wallet-topup`** *(WalletConnect, one-time)*: top up USDT (min 5 USDT, presets 5/10/20/50) + 0.0003 BNB for approve gas, session-key broadcasts `ERC20.approve(facilitator, MaxUint256)`. Subsequent paid calls all reuse this allowance and are gasless
+> - **`wallet-topup`** *(WalletConnect, one-time)*: top up USDT (min 6 USDT, presets 6/10/20/50) + 0.0003 BNB for approve gas, session-key broadcasts `ERC20.approve(facilitator, MaxUint256)`. Subsequent paid calls all reuse this allowance and are gasless
 > - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance it auto-falls back to the `wallet-topup` flow
 > - **`wallet-withdraw`**: session-key broadcasts a single ERC20 *or* BNB transfer on-chain (one asset per call) — USDT withdraw requires a small BNB for gas; the campaign reward portion (activity U) is non-withdrawable and stays on the session key for `sb invoke` use
 > - **`wallet-gas`**: BNB-only transfer (used when `wallet-withdraw` reports "No BNB for gas")
@@ -157,7 +157,7 @@ When done, re-run `aigateway wallet-init`.
   "address": "0x...",
   "deviceId": "uuid...",
   "mainWallet": "0x..." | null,
-  "usdt": "5.0",                   // merged U total (withdrawable USDT + activity reward, when campaign active)
+  "usdt": "6.0",                   // merged U total (withdrawable USDT + activity reward, when campaign active)
   "withdrawableUsdt": "1.0",       // pure on-chain USDT — the only portion that can be withdrawn to the main wallet
   "campaignReward": "4.0" | null,  // activity reward U (non-withdrawable, spendable only via sb invoke); null when campaign inactive
   "campaignActive": true,
@@ -165,7 +165,7 @@ When done, re-run `aigateway wallet-init`.
   "allowance": "115792...max" | "0",
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "no_approve" | "chain_check_failed",
-  "minTopup": 5,
+  "minTopup": 6,
   "presets": [6, 10, 20, 50]
 }
 ```

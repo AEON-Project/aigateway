@@ -54,7 +54,7 @@ export async function couponClaim(opts) {
 
   // 1. 状态查询
   logInfo(`Checking coupon status for ${userAddress}...`);
-  const status = await checkCouponStatus({ serviceUrl, userAddress, campaignId });
+  const status = await checkCouponStatus({ serviceUrl, userAddress, deviceId, campaignId });
 
   if (!status.ok) {
     // 网络/服务端不可达 —— envelope 返回失败,不阻塞用户后续流程

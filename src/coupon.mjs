@@ -21,15 +21,21 @@
  */
 import axios from "axios";
 
-/** 查询钱包是否已领过当前活动(不发起 mint) */
-export async function checkCouponStatus({ serviceUrl, userAddress, campaignId }) {
+/**
+ * 查询是否已领过当前活动 (不发起 mint).
+ * 同时携带 userAddress 与 deviceId, 服务端按 (address OR deviceId) 查重,
+ * 防止用户删除本地钱包重新生成后绕过 "每设备 1 次" 限制.
+ */
+export async function checkCouponStatus({ serviceUrl, userAddress, deviceId, campaignId }) {
   if (!serviceUrl) {
     return { ok: false, code: "SERVICE_URL_MISSING", errorMsg: "serviceUrl is required" };
   }
-  if (!userAddress) {
-    return { ok: false, code: "INVALID_PARAM", errorMsg: "userAddress is required" };
+  if (!userAddress && !deviceId) {
+    return { ok: false, code: "INVALID_PARAM", errorMsg: "userAddress or deviceId is required" };
   }
-  const params = new URLSearchParams({ userAddress });
+  const params = new URLSearchParams();
+  if (userAddress) params.set("userAddress", userAddress);
+  if (deviceId) params.set("deviceId", deviceId);
   if (campaignId) params.set("campaignId", campaignId);
   const url = `${serviceUrl}/open/api/coupon/status?${params}`;
 

@@ -209,7 +209,7 @@ Global flags: `--legacy-output` (legacy JSON shape), `--verbose`, `--quiet`.
 - **Session key**: a locally generated private key (`~/.aigateway/config.json`, mode 0o600). All paid calls are signed by this key, and the private key never leaves your machine.
 - **Main wallet**: your existing MetaMask / OKX / Trust wallet — only connected via the WalletConnect QR code, the main wallet's private key never touches the CLI.
 - **First-call balance threshold**: wallet balance must be ≥ **1 USDT** before invocation (`LOW_BALANCE_THRESHOLD`).
-- **Minimum top-up per session**: ≥ **5 USDT** (`MIN_TOPUP_USDT`), presets 5 / 10 / 20 / 50.
+- **Minimum top-up per session**: ≥ **6 USDT** (`MIN_TOPUP_USDT`), presets 6 / 10 / 20 / 50.
 - **One-time approve**: `wallet-topup` broadcasts a single `ERC20.approve(facilitator, MaxUint256)` (consumes ~0.0003 BNB); all subsequent paid calls reuse the allowance — no further on-chain tx needed.
 - **Gasless payments**: `sb invoke` is purely EIP-712 signing end-to-end; the server pays the gas for the on-chain USDT transfer.
 - **Dynamic pricing**: the server computes `priceUnit × inputs usage` in real time:

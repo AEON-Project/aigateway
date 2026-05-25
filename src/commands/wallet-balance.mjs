@@ -1,4 +1,4 @@
-import { resolve, loadConfig } from "../config.mjs";
+import { resolve, loadConfig, getOrCreateDeviceId } from "../config.mjs";
 import { getCombinedBalance, getBalanceByAddress } from "../balance.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
@@ -22,7 +22,13 @@ export async function wallet(opts) {
     let campaignActive = false;
     if (serviceUrl && config.address) {
       try {
-        const status = await checkCouponStatus({ serviceUrl, userAddress: config.address });
+        let earlyDeviceId = "";
+        try { earlyDeviceId = getOrCreateDeviceId(); } catch { /* container/restricted env */ }
+        const status = await checkCouponStatus({
+          serviceUrl,
+          userAddress: config.address,
+          deviceId: earlyDeviceId || undefined,
+        });
         campaignActive = status.ok && status.campaignActive === true;
       } catch {
         // Service unreachable → conservatively treat as campaign closed (reward not shown).

@@ -32,7 +32,13 @@
       "Bash(node --check /Users/yuanyong/work/aeon/aigateway/src/commands/wallet-withdraw.mjs)",
       "Bash(python3 -m json.tool)",
       "Bash(node bin/cli.mjs wallet-balance)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(node --check src/x402.mjs)",
+      "Bash(node --check src/coupon.mjs)",
+      "Bash(node --check src/commands/coupon-claim.mjs)",
+      "Bash(node bin/cli.mjs wallet-init)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\)['data']; print\\(f'minTopup={d[\\\\\"minTopup\\\\\"]}  presets={d[\\\\\"presets\\\\\"]}'\\)\")",
+      "Bash(node bin/cli.mjs wallet-topup --amount 4)"
     ]
   }
 }

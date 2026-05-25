@@ -8,7 +8,7 @@ import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, 
 import { privateKeyToAccount } from "viem/accounts";
 import { bsc } from "viem/chains";
 import { createInterface } from "node:readline/promises";
-import { loadConfig, resolve } from "../config.mjs";
+import { loadConfig, resolve, getOrCreateDeviceId } from "../config.mjs";
 import { getBalanceByAddress } from "../balance.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
 import { BSC_RPC_URL, USDT_BSC, ERC20_TRANSFER_ABI } from "../constants.mjs";
@@ -117,7 +117,13 @@ export async function withdraw(opts) {
   let campaignActive = false;
   if (serviceUrl) {
     try {
-      const status = await checkCouponStatus({ serviceUrl, userAddress: sessionAddress });
+      let earlyDeviceId = "";
+      try { earlyDeviceId = getOrCreateDeviceId(); } catch { /* container/restricted env */ }
+      const status = await checkCouponStatus({
+        serviceUrl,
+        userAddress: sessionAddress,
+        deviceId: earlyDeviceId || undefined,
+      });
       campaignActive = status.ok && status.campaignActive === true;
     } catch {
       // Service unreachable → conservatively treat as campaign closed.

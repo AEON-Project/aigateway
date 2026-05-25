@@ -30,10 +30,11 @@ import { logInfo } from "./output.mjs";
  *     image generations at current pricing) so users aren't asked to refund
  *     while they still have plenty of headroom.
  *   MIN_TOPUP_USDT: when a top-up *does* happen, what's the minimum amount?
- *     A top-up always costs ≥ 5 USDT so a single funding lasts a long time.
+ *     A top-up always costs ≥ 6 USDT so a single funding lasts a long time.
+ *     Equals the smallest preset so TTY pickers and `--amount` validation align.
  */
 export const LOW_BALANCE_THRESHOLD = 1;
-export const MIN_TOPUP_USDT = 5;
+export const MIN_TOPUP_USDT = 6;
 export const TOPUP_PRESETS = [6, 10, 20, 50];
 export const AUTO_GAS_BNB = "0.0003";
 /**
