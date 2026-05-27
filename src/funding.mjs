@@ -130,6 +130,7 @@ export async function promptTopupAmount(minTopup, opts = {}) {
  * @param {boolean} params.needGas - whether to also transfer 0.0003 BNB for approve gas
  * @param {string|null} [params.displayAmount] - 套餐原价 (优惠模式); 与 usdtAmount 不同时 QR 页面显示划线原价 + Reward 徽章
  * @param {number}      [params.couponAmount]  - 优惠抵扣额 (优惠模式), 用于徽章文案
+ * @returns {Promise<{peerAddress: string|null}>} 连接成功的用户主钱包地址 (失败时为 null)
  */
 export async function fundSessionKey({ sessionAddress, usdtAmount, needGas, displayAmount = null, couponAmount = 0 }) {
   const pageAmount = usdtAmount || (needGas ? AUTO_GAS_BNB : null);
@@ -138,6 +139,7 @@ export async function fundSessionKey({ sessionAddress, usdtAmount, needGas, disp
   // 优惠模式仅当: 存在 USDT 转账 + displayAmount 与实付 amount 不同 + couponAmount > 0
   const isCoupon = usdtAmount != null && displayAmount != null
     && String(displayAmount) !== String(usdtAmount) && couponAmount > 0;
+  let connectedPeer = null;
   await withWallet({
     amount: pageAmount,
     token: pageToken,
@@ -145,6 +147,7 @@ export async function fundSessionKey({ sessionAddress, usdtAmount, needGas, disp
     originalAmount: isCoupon ? displayAmount : null,
     couponAmount: isCoupon ? couponAmount : 0,
   }, async ({ signClient, session, peerAddress }) => {
+    connectedPeer = peerAddress;
     const publicClient = createPublicClient({
       chain: bsc,
       transport: http(BSC_RPC_URL, { timeout: 15000, retryCount: 2 }),
@@ -209,6 +212,7 @@ export async function fundSessionKey({ sessionAddress, usdtAmount, needGas, disp
 
     setStatus("confirmed", { token: usdtAmount ? "USDT" : "BNB" });
   });
+  return { peerAddress: connectedPeer };
 }
 
 /**

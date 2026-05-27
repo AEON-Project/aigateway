@@ -136,3 +136,72 @@ export async function claimCoupon({ serviceUrl, userAddress, deviceId, appId, ca
     };
   }
 }
+
+/**
+ * 上报充值监控数据 → POST /open/api/coupon/monitorAmount
+ *
+ * 服务端用于统计:
+ *   - 充值钱包地址数量 = distinct(localWallet)
+ *   - 充值订单数 = total 上报次数
+ *   - 成功充值订单量 = rechargeStatus="true" 的条数
+ *   - 成功充值订单总额 = Σ rechargeAmount where rechargeStatus="true"
+ *
+ * 失败不阻塞主流程, 调用方可忽略返回值.
+ *
+ * @param {object} params
+ * @param {string} params.serviceUrl
+ * @param {string} params.localWallet      - session key 地址 (本地钱包)
+ * @param {string} [params.clientWallet]   - 用户主钱包 (WalletConnect peerAddress); 没连上时可为空
+ * @param {string|number} params.rechargeAmount - 用户实际转账到本地钱包的金额 (USDT)
+ * @param {boolean} params.couponClaimStatus    - 优惠领取成功 (true / 领过 / 失败 → false)
+ * @param {boolean} params.rechargeStatus       - 真实到账 (true / 取消 / 超时 / 失败 → false)
+ * @returns {Promise<{ok:boolean, code?:string, errorMsg?:string}>}
+ */
+export async function reportMonitorAmount({
+  serviceUrl,
+  localWallet,
+  clientWallet,
+  rechargeAmount,
+  couponClaimStatus,
+  rechargeStatus,
+}) {
+  if (!serviceUrl) {
+    return { ok: false, code: "SERVICE_URL_MISSING", errorMsg: "serviceUrl is required" };
+  }
+  if (!localWallet) {
+    return { ok: false, code: "INVALID_PARAM", errorMsg: "localWallet is required" };
+  }
+
+  const url = `${serviceUrl}/open/api/coupon/monitorAmount`;
+  const body = {
+    localWallet,
+    clientWallet: clientWallet || "",
+    rechargeAmount: rechargeAmount != null ? String(rechargeAmount) : "0",
+    couponClaimStatus: couponClaimStatus === true ? "true" : "false",
+    rechargeStatus: rechargeStatus === true ? "true" : "false",
+  };
+
+  try {
+    const resp = await axios.post(url, body, {
+      timeout: 10_000,
+      headers: { "Content-Type": "application/json" },
+    });
+    const envelope = resp.data;
+    if (envelope && envelope.code !== "0" && envelope.success !== true) {
+      return {
+        ok: false,
+        code: "SERVER_ERROR",
+        errorMsg: envelope.msg || envelope.message || "Server returned non-zero code",
+        serverCode: envelope.code,
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      code: "REPORT_NETWORK_ERROR",
+      errorMsg: e.message,
+      status: e.response?.status,
+    };
+  }
+}

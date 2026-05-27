@@ -16,7 +16,7 @@
  *      mint 结果回 envelope.coupon, 由 LLM 决定文案.
  *   7. Re-query balance / allowance / token 并返回最终状态.
  */
-import { resolve, getOrCreateDeviceId } from "../config.mjs";
+import { resolve, getOrCreateDeviceId, loadConfig } from "../config.mjs";
 import { getWalletBalance, getAllowance, getCombinedBalance } from "../balance.mjs";
 import {
   fundSessionKey,
@@ -28,7 +28,7 @@ import {
   COUPON_AMOUNT_USDT,
 } from "../funding.mjs";
 import { WalletConnectError } from "../walletconnect.mjs";
-import { checkCouponStatus, claimCoupon } from "../coupon.mjs";
+import { checkCouponStatus, claimCoupon, reportMonitorAmount } from "../coupon.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 export async function topup(opts) {
@@ -218,6 +218,10 @@ export async function topup(opts) {
   }
 
   // WalletConnect top-up (actualPay USDT + optional BNB for approve gas)
+  //   clientWallet: 用户主钱包地址 (peerAddress). 连接成功后填充, 失败时回落到 config.mainWallet (前次连过).
+  //   transferSucceeded: 用于上报 rechargeStatus —— 仅 fundSessionKey 完成时为 true.
+  let clientWallet = loadConfig().mainWallet || "";
+  let transferSucceeded = false;
   if (needTopup || needGas) {
     const willTransfer = [];
     if (needTopup) willTransfer.push(`${actualPay} USDT${couponEligible ? ` (${displayAmount} U package, ${COUPON_AMOUNT_USDT} U coupon)` : ""}`);
@@ -225,14 +229,22 @@ export async function topup(opts) {
     logInfo(`Funding flow triggered (${willTransfer.join(" + ")})...`);
     logInfo("Opening WalletConnect QR — please scan with your wallet app.");
     try {
-      await fundSessionKey({
+      const fundResult = await fundSessionKey({
         sessionAddress: address,
         usdtAmount: needTopup ? actualPay : null,
         needGas,
         displayAmount: needTopup && couponEligible ? displayAmount : null,
         couponAmount: needTopup && couponEligible ? COUPON_AMOUNT_USDT : 0,
       });
+      if (fundResult?.peerAddress) clientWallet = fundResult.peerAddress;
+      transferSucceeded = true;
     } catch (e) {
+      if (needTopup) {
+        await safeReportMonitor({
+          serviceUrl, localWallet: address, clientWallet,
+          rechargeAmount: actualPay, couponClaimStatus: false, rechargeStatus: false,
+        });
+      }
       if (e instanceof WalletConnectError) {
         emitErr("wallet-topup", e.code, { message: e.message, address, appId });
       } else {
@@ -259,6 +271,12 @@ export async function topup(opts) {
       }
     }
     if (postBnbRaw === 0n) {
+      if (needTopup && transferSucceeded) {
+        await safeReportMonitor({
+          serviceUrl, localWallet: address, clientWallet,
+          rechargeAmount: actualPay, couponClaimStatus: false, rechargeStatus: true,
+        });
+      }
       emitErr("wallet-topup", "INSUFFICIENT_BNB", {
         message: "No BNB available for approve transaction. Run 'aigateway wallet-gas' to add BNB manually.",
         address,
@@ -269,6 +287,12 @@ export async function topup(opts) {
     try {
       approveTx = await approveFacilitator(privateKey);
     } catch (e) {
+      if (needTopup && transferSucceeded) {
+        await safeReportMonitor({
+          serviceUrl, localWallet: address, clientWallet,
+          rechargeAmount: actualPay, couponClaimStatus: false, rechargeStatus: true,
+        });
+      }
       emitErr("wallet-topup", "APPROVE_FAILED", {
         message: `Pre-authorize failed: ${e.message}`,
         address,
@@ -324,6 +348,16 @@ export async function topup(opts) {
     logInfo(`Final balance/allowance check failed: ${e.message}`);
   }
 
+  // 最终成功上报 (仅 needTopup 实际发生过转账才上报)
+  if (needTopup && transferSucceeded) {
+    await safeReportMonitor({
+      serviceUrl, localWallet: address, clientWallet,
+      rechargeAmount: actualPay,
+      couponClaimStatus: couponResult?.claimed === true,
+      rechargeStatus: true,
+    });
+  }
+
   const data = {
     ready: true,
     appId,
@@ -343,4 +377,21 @@ export async function topup(opts) {
     approveTx,
   };
   emitOk("wallet-topup", data, { ...data, success: true });
+}
+
+/**
+ * 上报包装: 上报失败不阻塞主流程, 只写日志.
+ */
+async function safeReportMonitor({ serviceUrl, localWallet, clientWallet, rechargeAmount, couponClaimStatus, rechargeStatus }) {
+  if (!serviceUrl) return;
+  try {
+    const r = await reportMonitorAmount({
+      serviceUrl, localWallet, clientWallet, rechargeAmount, couponClaimStatus, rechargeStatus,
+    });
+    if (!r.ok) {
+      logInfo(`monitorAmount report failed: ${r.code} ${r.errorMsg || ""}`);
+    }
+  } catch (e) {
+    logInfo(`monitorAmount report exception: ${e.message}`);
+  }
 }
