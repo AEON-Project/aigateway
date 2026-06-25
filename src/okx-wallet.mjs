@@ -109,18 +109,40 @@ export async function getOkxEvmAddress() {
 
 // EIP-712 sign: returns hex signature string (0x...)
 export async function signEIP712WithOkx(address, typedData) {
+  // viem omits EIP712Domain from types; onchainos requires the full standard EIP-712 JSON
+  // (https://eips.ethereum.org/EIPS/eip-712) including EIP712Domain in types.
+  const domainFields = [];
+  const d = typedData.domain || {};
+  if (d.name         !== undefined) domainFields.push({ name: 'name',              type: 'string'  });
+  if (d.version      !== undefined) domainFields.push({ name: 'version',           type: 'string'  });
+  if (d.chainId      !== undefined) domainFields.push({ name: 'chainId',           type: 'uint256' });
+  if (d.verifyingContract !== undefined) domainFields.push({ name: 'verifyingContract', type: 'address' });
+  if (d.salt         !== undefined) domainFields.push({ name: 'salt',              type: 'bytes32' });
+
+  const fullTypedData = {
+    types: { EIP712Domain: domainFields, ...typedData.types },
+    primaryType: typedData.primaryType,
+    domain: typedData.domain,
+    message: typedData.message,
+  };
+
+  // BigInt values must be converted to decimal strings for JSON serialization
+  const messageJson = JSON.stringify(fullTypedData, (_, v) =>
+    typeof v === 'bigint' ? v.toString() : v
+  );
   const result = await run([
     'wallet', 'sign-message',
     '--chain', 'bsc',
     '--type',  'eip712',
-    '--message', JSON.stringify(typedData),
+    '--message', messageJson,
     '--from',  address,
     '--force',
   ], { timeout: 60_000 });
-  if (!result.signature) {
+  const signature = result.signature || result.data?.signature;
+  if (!signature) {
     throw new Error(`OKX EIP-712 signing failed: ${JSON.stringify(result)}`);
   }
-  return result.signature;
+  return signature;
 }
 
 // Contract call (approve etc.): returns txHash string
@@ -133,10 +155,29 @@ export async function contractCallWithOkx(address, { to, data }) {
     '--from',       address,
     '--force',
   ], { timeout: 120_000 });
-  if (!result.txHash) {
+  // onchainos returns { ok: true, data: { txHash, orderId } }
+  const txHash = result.txHash || result.data?.txHash;
+  if (!txHash) {
     throw new Error(`OKX contract-call failed: ${JSON.stringify(result)}`);
   }
-  return result.txHash;
+  return txHash;
+}
+
+// ─── Approve facilitator (used by wallet-topup in OKX mode) ─────────────────
+
+export async function approveFacilitatorWithOkx(address) {
+  const { encodeFunctionData, maxUint256 } = await import('viem');
+  const { USDT_BSC, FACILITATOR_ADDRESS } = await import('./constants.mjs');
+  const data = encodeFunctionData({
+    abi: [{
+      name: 'approve', type: 'function', stateMutability: 'nonpayable',
+      inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
+      outputs: [{ name: '', type: 'bool' }],
+    }],
+    functionName: 'approve',
+    args: [FACILITATOR_ADDRESS, maxUint256],
+  });
+  return contractCallWithOkx(address, { to: USDT_BSC, data });
 }
 
 // ─── Transfer (used by wallet-withdraw) ──────────────────────────────────────
@@ -151,8 +192,9 @@ export async function walletSendWithOkx({ recipient, amount, tokenAddress }) {
   ];
   if (tokenAddress) args.push('--contract-token', tokenAddress);
   const result = await run(args, { timeout: 120_000 });
-  if (!result.txHash) {
+  const txHash = result.txHash || result.data?.txHash;
+  if (!txHash) {
     throw new Error(`OKX wallet send failed: ${JSON.stringify(result)}`);
   }
-  return result.txHash;
+  return txHash;
 }

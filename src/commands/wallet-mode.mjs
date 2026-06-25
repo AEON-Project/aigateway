@@ -1,9 +1,15 @@
 /**
- * wallet-mode: switch between local session key and OKX Agentic Wallet.
+ * wallet-mode: switch payment mode between local session key and OKX Agentic Wallet.
  *
- * `wallet-mode okx`  — interactive wizard: installs onchainos CLI, guides through
- *                      email-OTP or API-Key login, saves mode + EVM address to config.
- * `wallet-mode session-key` — revert to the default local session-key mode.
+ * Non-interactive (Claude Code / CI friendly):
+ *   Email OTP — two steps:
+ *     aigateway wallet-mode okx --email user@example.com    # sends OTP
+ *     aigateway wallet-mode okx --otp 123456                # verifies & saves
+ *   API Key — one step (env vars inline or pre-exported):
+ *     OKX_API_KEY=x OKX_SECRET_KEY=x OKX_PASSPHRASE=x aigateway wallet-mode okx
+ *
+ * Interactive (real terminal):
+ *   aigateway wallet-mode okx     # guided wizard with readline prompts
  */
 import { createInterface } from 'node:readline/promises';
 import { loadConfig, saveConfig } from '../config.mjs';
@@ -17,10 +23,6 @@ import {
 } from '../okx-wallet.mjs';
 import { emitOk, emitErr, logInfo } from '../output.mjs';
 
-function isTTY() {
-  return Boolean(process.stdin.isTTY && process.stderr.isTTY);
-}
-
 export async function setWalletMode(mode, opts = {}) {
   if (mode !== 'okx' && mode !== 'session-key') {
     emitErr('wallet-mode', 'INVALID_MODE', {
@@ -29,7 +31,7 @@ export async function setWalletMode(mode, opts = {}) {
     return;
   }
 
-  // ── session-key: just flip the flag ───────────────────────────────────────
+  // ── session-key: just flip the flag ──────────────────────────────────────
   if (mode === 'session-key') {
     const config = loadConfig();
     config.mode = 'session-key';
@@ -39,124 +41,128 @@ export async function setWalletMode(mode, opts = {}) {
     return;
   }
 
-  // ── okx: full setup wizard ────────────────────────────────────────────────
+  // ── okx setup ─────────────────────────────────────────────────────────────
+  await _ensureOnchainos();
 
-  // Non-TTY fast path: API keys already in env or config — skip interactive steps.
-  if (!isTTY()) {
-    const config = loadConfig();
-    const hasApiKey = process.env.OKX_API_KEY || config.okxApiKey;
-    if (!hasApiKey) {
-      emitErr('wallet-mode', 'TTY_REQUIRED', {
-        message:
-          'Interactive setup requires a TTY. ' +
-          'Set OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE env vars first, ' +
-          'then run: aigateway wallet-mode okx',
-      });
-      return;
+  const config = loadConfig();
+
+  // Already configured: verify session is still alive, skip re-auth if it is
+  if (config.mode === 'okx' && config.address) {
+    try {
+      const status = await walletStatus();
+      const loggedIn = status.loggedIn === true || status.data?.loggedIn === true;
+      if (loggedIn) {
+        logInfo(`OKX wallet already configured (${config.address}) and session is active.`);
+        emitOk('wallet-mode',
+          { mode: 'okx', address: config.address, alreadyConfigured: true },
+          { mode: 'okx', address: config.address, alreadyConfigured: true });
+        return;
+      }
+      logInfo('OKX session expired — re-authenticating...');
+    } catch {
+      // onchainos unavailable, proceed to re-auth
     }
-    await _saveOkxMode('apikey');
+  }
+
+  // Path A: API Key already in env or config
+  const hasApiKey = process.env.OKX_API_KEY || config.okxApiKey;
+  if (hasApiKey) {
+    logInfo('Using existing OKX API Key credentials.');
+    await _finalise('apikey');
     return;
   }
 
-  // Step 1 — ensure onchainos is installed
-  logInfo('');
-  logInfo('Step 1/3 — Checking onchainos CLI...');
-  let available = await checkOnchainos();
-  if (!available) {
-    logInfo('onchainos not found — installing now...');
-    try {
-      await installOnchainos();
-      available = await checkOnchainos();
-      if (!available) throw new Error('Installation succeeded but onchainos is still not on PATH. Check your shell PATH.');
-      logInfo('✓ onchainos installed successfully.');
-    } catch (err) {
-      emitErr('wallet-mode', 'OKX_CLI_INSTALL_FAILED', {
-        message: err.message,
-        hint: 'Manual install: curl -sSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | sh',
-      });
-      return;
-    }
-  } else {
-    logInfo('✓ onchainos CLI is available.');
+  // Path B: --email flag (step 1 — send OTP)
+  if (opts.email) {
+    await _sendOtp(opts.email);
+    return;
   }
 
-  // Step 2 — choose auth method
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  // Path C: --otp flag (step 2 — verify OTP)
+  if (opts.otp) {
+    await _verifyAndFinalise(opts.otp);
+    return;
+  }
+
+  // Path D: interactive readline — only when stdin is a real TTY.
+  // In Claude Code / agent shells, stdin.isTTY is false even if the user sees
+  // a terminal; readline will silently consume chat messages and loop forever.
+  if (!process.stdin.isTTY) {
+    emitErr('wallet-mode', 'USE_FLAGS_IN_AGENT', {
+      message: 'Interactive input is not available in this environment.',
+      hint: [
+        'Use flags instead:',
+        '  # Email OTP (two steps):',
+        '  aigateway wallet-mode okx --email your@email.com',
+        '  aigateway wallet-mode okx --otp <code>',
+        '  # API Key (one step):',
+        '  OKX_API_KEY=xxx OKX_SECRET_KEY=xxx OKX_PASSPHRASE=xxx aigateway wallet-mode okx',
+      ].join('\n'),
+    });
+    return;
+  }
+  await _interactiveSetup();
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async function _ensureOnchainos() {
+  logInfo('Checking onchainos CLI...');
+  const available = await checkOnchainos();
+  if (available) { logInfo('✓ onchainos is available.'); return; }
+
+  logInfo('onchainos not found — installing...');
   try {
-    logInfo('');
-    logInfo('Step 2/3 — Choose login method:');
-    logInfo('  [1] Email + OTP  (recommended)');
-    logInfo('  [2] API Key  (OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE)');
-    logInfo('');
-
-    let authMethod = null;
-    while (!authMethod) {
-      const ans = (await rl.question('Enter choice [1-2]: ')).trim();
-      if (ans === '1') authMethod = 'email';
-      else if (ans === '2') authMethod = 'apikey';
-      else logInfo('Please enter 1 or 2.');
+    await installOnchainos();
+    if (!await checkOnchainos()) {
+      throw new Error('onchainos still not found after install. Check your PATH.');
     }
-
-    if (authMethod === 'email') {
-      const email = (await rl.question('Enter your OKX account email: ')).trim();
-      if (!email) { emitErr('wallet-mode', 'INVALID_INPUT', { message: 'Email is required.' }); return; }
-
-      logInfo(`Sending OTP to ${email}...`);
-      try {
-        await loginWithEmail(email);
-        logInfo(`✓ OTP sent to ${email}`);
-      } catch (err) {
-        emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: err.message }); return;
-      }
-
-      const otp = (await rl.question(`Enter the OTP code sent to ${email}: `)).trim();
-      if (!otp) { emitErr('wallet-mode', 'INVALID_INPUT', { message: 'OTP is required.' }); return; }
-
-      try {
-        await verifyOtp(otp);
-        logInfo('✓ Login successful.');
-      } catch (err) {
-        emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: `OTP verification failed: ${err.message}` }); return;
-      }
-    } else {
-      // API Key flow
-      logInfo('');
-      logInfo('Keys are stored in ~/.aigateway/config.json (file permissions: 0600).');
-      logInfo('');
-      const apiKey    = (await rl.question('Enter OKX_API_KEY:    ')).trim();
-      const secretKey = (await rl.question('Enter OKX_SECRET_KEY: ')).trim();
-      const passphrase = (await rl.question('Enter OKX_PASSPHRASE: ')).trim();
-
-      if (!apiKey || !secretKey || !passphrase) {
-        emitErr('wallet-mode', 'INVALID_INPUT', { message: 'All three API Key fields are required.' }); return;
-      }
-
-      // Persist before calling walletStatus so buildEnv() picks them up
-      const config = loadConfig();
-      config.okxApiKey     = apiKey;
-      config.okxSecretKey  = secretKey;
-      config.okxPassphrase = passphrase;
-      saveConfig(config);
-
-      try {
-        const status = await walletStatus();
-        if (!status.loggedIn) throw new Error('Wallet shows loggedIn=false — check your API Key credentials.');
-        logInfo('✓ API Key authentication successful.');
-      } catch (err) {
-        emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: `API Key verification failed: ${err.message}` }); return;
-      }
-    }
-
-    // Step 3 — read EVM address and persist mode
-    logInfo('');
-    logInfo('Step 3/3 — Reading OKX wallet EVM address...');
-    await _saveOkxMode(authMethod);
-  } finally {
-    rl.close();
+    logInfo('✓ onchainos installed.');
+  } catch (err) {
+    emitErr('wallet-mode', 'OKX_CLI_INSTALL_FAILED', {
+      message: err.message,
+      hint: 'Manual install: curl -sSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | sh',
+    });
+    throw err;
   }
 }
 
-async function _saveOkxMode(authMethod) {
+async function _sendOtp(email) {
+  logInfo(`Sending OTP to ${email}...`);
+  try {
+    await loginWithEmail(email);
+  } catch (err) {
+    emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: err.message });
+    return;
+  }
+  // Persist email so --otp step can reference it (optional UX, not strictly required)
+  const config = loadConfig();
+  config._okxPendingEmail = email;
+  saveConfig(config);
+
+  logInfo(`✓ OTP sent to ${email}`);
+  emitOk('wallet-mode', {
+    mode: 'okx',
+    step: 'otp_sent',
+    email,
+    next: `aigateway wallet-mode okx --otp <code>`,
+  }, { step: 'otp_sent', email });
+}
+
+async function _verifyAndFinalise(otp) {
+  logInfo('Verifying OTP...');
+  try {
+    await verifyOtp(otp);
+    logInfo('✓ Login successful.');
+  } catch (err) {
+    emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: `OTP verification failed: ${err.message}` });
+    return;
+  }
+  await _finalise('email');
+}
+
+async function _finalise(authMethod) {
+  logInfo('Reading OKX wallet EVM address...');
   let address;
   try {
     address = await getOkxEvmAddress();
@@ -165,13 +171,89 @@ async function _saveOkxMode(authMethod) {
     emitErr('wallet-mode', 'OKX_WALLET_NOT_FOUND', { message: err.message });
     return;
   }
-
   const config = loadConfig();
   config.mode    = 'okx';
   config.address = address;
+  delete config._okxPendingEmail;
   saveConfig(config);
-
-  logInfo('');
   logInfo('✓ Saved to ~/.aigateway/config.json');
   emitOk('wallet-mode', { mode: 'okx', address, authMethod }, { mode: 'okx', address, authMethod });
+}
+
+async function _interactiveSetup() {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    logInfo('');
+    logInfo('Choose login method:');
+    logInfo('  [1] Email + OTP  (recommended)');
+    logInfo('  [2] API Key  (OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE)');
+    logInfo('');
+
+    let authMethod = null;
+    while (!authMethod) {
+      let ans;
+      try { ans = (await rl.question('Enter choice [1-2]: ')).trim(); }
+      catch {
+        emitErr('wallet-mode', 'STDIN_NOT_READABLE', {
+          message: 'Cannot read interactive input in this environment.',
+          hint: [
+            'Email OTP (two steps):',
+            '  aigateway wallet-mode okx --email your@email.com',
+            '  aigateway wallet-mode okx --otp <code>',
+            'API Key (one step):',
+            '  OKX_API_KEY=x OKX_SECRET_KEY=x OKX_PASSPHRASE=x aigateway wallet-mode okx',
+          ].join('\n'),
+        });
+        return;
+      }
+      if (ans === '1') authMethod = 'email';
+      else if (ans === '2') authMethod = 'apikey';
+      else logInfo('Please enter 1 or 2.');
+    }
+
+    if (authMethod === 'email') {
+      const email = (await rl.question('Enter your OKX account email: ')).trim();
+      if (!email) { emitErr('wallet-mode', 'INVALID_INPUT', { message: 'Email is required.' }); return; }
+      logInfo(`Sending OTP to ${email}...`);
+      try {
+        await loginWithEmail(email);
+        logInfo(`✓ OTP sent to ${email}`);
+      } catch (err) {
+        emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: err.message }); return;
+      }
+      const otp = (await rl.question(`Enter OTP code sent to ${email}: `)).trim();
+      if (!otp) { emitErr('wallet-mode', 'INVALID_INPUT', { message: 'OTP is required.' }); return; }
+      try {
+        await verifyOtp(otp);
+        logInfo('✓ Login successful.');
+      } catch (err) {
+        emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: `OTP verification failed: ${err.message}` }); return;
+      }
+    } else {
+      logInfo('');
+      logInfo('Keys are stored in ~/.aigateway/config.json (mode 0600).');
+      logInfo('');
+      const apiKey     = (await rl.question('Enter OKX_API_KEY:    ')).trim();
+      const secretKey  = (await rl.question('Enter OKX_SECRET_KEY: ')).trim();
+      const passphrase = (await rl.question('Enter OKX_PASSPHRASE: ')).trim();
+      if (!apiKey || !secretKey || !passphrase) {
+        emitErr('wallet-mode', 'INVALID_INPUT', { message: 'All three API Key fields are required.' }); return;
+      }
+      const cfg = loadConfig();
+      cfg.okxApiKey = apiKey; cfg.okxSecretKey = secretKey; cfg.okxPassphrase = passphrase;
+      saveConfig(cfg);
+      try {
+        const status = await walletStatus();
+        if (!status.loggedIn) throw new Error('loggedIn=false — check credentials.');
+        logInfo('✓ API Key verified.');
+      } catch (err) {
+        emitErr('wallet-mode', 'OKX_LOGIN_FAILED', { message: `API Key verification failed: ${err.message}` }); return;
+      }
+    }
+
+    logInfo('');
+    await _finalise(authMethod === 'email' ? 'email' : 'apikey');
+  } finally {
+    rl.close();
+  }
 }

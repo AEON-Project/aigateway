@@ -503,7 +503,9 @@ export async function invoke(opts) {
   // Post-payment balance probe (合并 USDT + BNA, 对外只暴露统一 U)
   let balanceAfterUsdt = null;
   try {
-    const after = await getWalletBalance(privateKey, { withToken: true });
+    const after = isOkx
+      ? await getBalanceByAddress(config.address, { withToken: campaignActive })
+      : await getWalletBalance(privateKey, { withToken: true });
     balanceAfterUsdt = campaignActive
       ? (parseFloat(after.usdt) + parseFloat(after.token || "0")).toString()
       : after.usdt;

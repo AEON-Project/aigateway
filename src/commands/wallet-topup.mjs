@@ -17,7 +17,8 @@
  *   7. Re-query balance / allowance / token 并返回最终状态.
  */
 import { resolve, getOrCreateDeviceId, loadConfig } from "../config.mjs";
-import { getWalletBalance, getAllowance, getCombinedBalance } from "../balance.mjs";
+import { getWalletBalance, getAllowance, getCombinedBalance, getBalanceByAddress } from "../balance.mjs";
+import { approveFacilitatorWithOkx } from "../okx-wallet.mjs";
 import {
   fundSessionKey,
   approveFacilitator,
@@ -35,31 +36,20 @@ export async function topup(opts) {
   const config = loadConfig();
   const appId = opts.appId;
 
-  // ── OKX mode: no WalletConnect — just show the deposit address ───────────
-  if (config.mode === 'okx') {
-    if (!config.address) {
-      emitErr("wallet-topup", "OKX_NOT_CONFIGURED", {
-        message: "OKX wallet not configured. Run: aigateway wallet-mode okx",
-        appId,
-      });
-      return;
-    }
-    emitOk("wallet-topup", {
-      mode: 'okx',
+  logInfo("Topping up wallet: verifying readiness...");
+
+  // ── Resolve wallet address (OKX: from config; session-key: from private key) ──
+  const isOkx = config.mode === 'okx';
+  if (isOkx && !config.address) {
+    emitErr("wallet-topup", "OKX_NOT_CONFIGURED", {
+      message: "OKX wallet not configured. Run: aigateway wallet-mode okx",
       appId,
-      message: "Please send USDT (BSC BEP-20) directly to your OKX wallet address.",
-      address: config.address,
-      network: "BSC Mainnet (Chain ID: 56)",
-    }, { mode: 'okx', address: config.address });
+    });
     return;
   }
-
-  // ── Default: WalletConnect ─────────────────────────────────────────────────
-  logInfo("Topping up wallet: verifying readiness...");
-  const privateKey = resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
   const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-
-  if (!privateKey) {
+  const privateKey = isOkx ? null : resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
+  if (!isOkx && !privateKey) {
     emitErr("wallet-topup", "WALLET_NOT_CONFIGURED", {
       message: "Wallet not configured. Run: aigateway wallet-init",
       appId,
@@ -67,10 +57,11 @@ export async function topup(opts) {
     return;
   }
 
-  // 先查 session 地址 (只需 USDT/BNB, 不查 token 因为还没确定 campaignActive)
   let preBal;
   try {
-    preBal = await getWalletBalance(privateKey, { withToken: false });
+    preBal = isOkx
+      ? await getBalanceByAddress(config.address, { withToken: false })
+      : await getWalletBalance(privateKey, { withToken: false });
   } catch (e) {
     emitErr("wallet-topup", "BALANCE_CHECK_FAILED", {
       message: `Balance check failed: ${e.message}`,
@@ -78,7 +69,7 @@ export async function topup(opts) {
     });
     return;
   }
-  const address = preBal.address;
+  const address = isOkx ? config.address : preBal.address;
   logInfo(`Wallet:    ${address}`);
   logInfo(`App ID:    ${appId}`);
 
@@ -119,7 +110,9 @@ export async function topup(opts) {
   }
 
   // 拿到 campaignActive 后再合并余额 (campaignActive=false 时 token 不计入 U)
-  const bal = await getCombinedBalance(privateKey, { campaignActive });
+  const bal = isOkx
+    ? await getBalanceByAddress(address, { withToken: campaignActive })
+    : await getCombinedBalance(privateKey, { campaignActive });
   const usdt = bal.usdt;          // unified U total
   const usdtNum = parseFloat(usdt);
   const bnb = bal.bnb;
@@ -286,7 +279,9 @@ export async function topup(opts) {
     let postBnbRaw = bnbRaw;
     if (needGas) {
       try {
-        const post = await getWalletBalance(privateKey);
+        const post = isOkx
+          ? await getBalanceByAddress(address)
+          : await getWalletBalance(privateKey);
         postBnbRaw = post.bnbRaw;
       } catch (e) {
         logInfo(`Post-funding balance re-check failed: ${e.message}`);
@@ -307,7 +302,9 @@ export async function topup(opts) {
       return;
     }
     try {
-      approveTx = await approveFacilitator(privateKey);
+      approveTx = isOkx
+        ? await approveFacilitatorWithOkx(address)
+        : await approveFacilitator(privateKey);
     } catch (e) {
       if (needTopup && transferSucceeded) {
         await safeReportMonitor({
@@ -362,9 +359,15 @@ export async function topup(opts) {
   let finalBnb = bnb;
   let finalAllowance = allowance;
   try {
-    const final = await getCombinedBalance(privateKey, { campaignActive });
-    finalUsdt = final.usdt;
-    finalBnb = final.bnb;
+    if (isOkx) {
+      const final = await getBalanceByAddress(address, { withToken: campaignActive });
+      finalUsdt = final.usdt;
+      finalBnb  = final.bnb;
+    } else {
+      const final = await getCombinedBalance(privateKey, { campaignActive });
+      finalUsdt = final.usdt;
+      finalBnb  = final.bnb;
+    }
     finalAllowance = await getAllowance(address);
   } catch (e) {
     logInfo(`Final balance/allowance check failed: ${e.message}`);

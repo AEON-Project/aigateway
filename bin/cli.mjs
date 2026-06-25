@@ -142,9 +142,11 @@ program
   .command("wallet-mode")
   .description("Switch payment mode: okx (OKX Agentic Wallet) | session-key (local default)")
   .argument("<mode>", "okx or session-key")
-  .action(async (mode) => {
+  .option("--email <email>", "OKX account email — sends OTP (step 1 of email login)")
+  .option("--otp <code>",    "OTP code received by email (step 2 of email login)")
+  .action(async (mode, opts) => {
     const { setWalletMode } = await import("../src/commands/wallet-mode.mjs");
-    return setWalletMode(mode);
+    return setWalletMode(mode, opts);
   });
 
 program

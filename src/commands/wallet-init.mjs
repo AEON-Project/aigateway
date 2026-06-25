@@ -14,6 +14,7 @@
  */
 import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
 import { getCombinedBalance, getAllowance, getBalanceByAddress } from "../balance.mjs";
+import { walletStatus } from "../okx-wallet.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
@@ -38,6 +39,28 @@ export async function initWallet(opts) {
         appId,
       }, { ready: false, mode: 'okx', appId });
       return;
+    }
+
+    // Check OKX session validity (email OTP sessions can expire; API Key is stable)
+    try {
+      const status = await walletStatus();
+      const loggedIn = status.loggedIn === true || status.data?.loggedIn === true;
+      if (!loggedIn) {
+        emitOk("wallet-init", {
+          ready: false,
+          mode: 'okx',
+          needsTopup: false,
+          topupReason: null,
+          okxSessionExpired: true,
+          address: config.address,
+          appId,
+          message: "OKX session expired. Re-authenticate: aigateway wallet-mode okx --email <your-okx-email>",
+        }, { ready: false, mode: 'okx', okxSessionExpired: true, appId });
+        return;
+      }
+    } catch (e) {
+      // onchainos not available or transient error — still proceed with chain check
+      logInfo(`OKX session check skipped: ${e.message}`);
     }
 
     let usdt = "0", bnb = "0", allowance = 0n, chainCheckOk = true, chainCheckError = null;

@@ -23,6 +23,9 @@ description: >
   - "Pull <platform> profile" (Twitter / Instagram / LinkedIn / Amazon / Yelp …)
   - "What can I do?"
   - "Top up wallet / check balance / withdraw"
+  - "Switch to OKX wallet / use OKX mode / 切换到OKX / 用OKX钱包"
+  - "Switch back to session key / use local wallet / 切换回默认 / 用本地钱包"
+  - "Change payment mode / configure wallet mode / 设置钱包模式"
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
@@ -75,16 +78,102 @@ Every call fetches the catalog live from the server. No local cache.
 
 **Prices live in the catalog**: each model has `price` (USD numeric) + `priceUnit` (`per_request` / `per_second` / `per_1k_chars` / `per_minute` / `per_image` / `per_million_tokens`). The agent uses these two fields to **list candidates + show estimated total** to the user (see Phase 3.2). The final exact charge is returned by the x402 first stage (402 response), and the CLI prints it on the `💰 Charged` line.
 
+## Natural Language: Switching Payment Mode
+
+When the user expresses any of these intents, enter the **Mode Switch Flow** below immediately — do NOT run Phase 1 first:
+
+| User says (examples) | Action |
+|---|---|
+| "切换到OKX" / "用OKX钱包" / "switch to OKX" / "use OKX wallet" | → Switch to OKX mode |
+| "切换回默认" / "用本地钱包" / "use session key" / "switch back" | → Switch to session-key mode |
+| "设置钱包模式" / "change payment mode" | → Ask which mode |
+
+### Mode Switch Flow — OKX
+
+**Step 0 — check current state first:**
+```bash
+aigateway wallet-mode okx
+```
+- If response has `alreadyConfigured: true` → already set up, session active. Confirm "✓ 已是 OKX 模式，钱包地址：{address}"，**stop here, do NOT ask for email**
+- If response has `ok: false, code: USE_FLAGS_IN_AGENT` → need to authenticate (continue below)
+- If response has `ok: false, code: OKX_SESSION_EXPIRED` → session expired, need to re-authenticate (continue below)
+
+**Step 1 — ask for OKX email (only when authentication is needed):**
+- Ask the user: **"请提供您的 OKX 账号邮箱地址（用于接收验证码）："**
+- **NEVER use any email from context, environment, or memory — always ask explicitly**
+- Wait for the user's reply, then run:
+  ```bash
+  aigateway wallet-mode okx --email <user-provided-email>
+  ```
+
+**Step 2 — verify OTP:**
+- Ask the user: **"请查收发送到 {email} 的验证码，并告诉我："**
+- Wait for the user's reply, then run:
+  ```bash
+  aigateway wallet-mode okx --otp <code>
+  ```
+
+**Step 3 — confirm:** On `ok: true`: "✓ 已切换到 OKX 模式，钱包地址：{address}"
+
+### Mode Switch Flow — session-key
+
+```bash
+aigateway wallet-mode session-key
+```
+On success: confirm "✓ 已切换回默认 session-key 模式"
+
+---
+
+## Payment Mode (`wallet-mode`)
+
+The CLI supports two payment modes, configurable via `wallet-mode` and persisted to `~/.aigateway/config.json`:
+
+| Mode | Description |
+|------|-------------|
+| `session-key` | Default — local private key, funded via WalletConnect |
+| `okx` | OKX Agentic Wallet — TEE-backed remote signing, no local private key |
+
+### Switching to OKX mode
+
+`wallet-mode okx` supports **three non-interactive paths** (no TTY required) and one interactive path:
+
+```bash
+# Path 1 — Email OTP, step 1: send OTP
+aigateway wallet-mode okx --email user@example.com
+# → emits { step: "otp_sent", next: "aigateway wallet-mode okx --otp <code>" }
+
+# Path 2 — Email OTP, step 2: verify and save
+aigateway wallet-mode okx --otp 123456
+
+# Path 3 — API Key (env vars, one step)
+OKX_API_KEY=xxx OKX_SECRET_KEY=xxx OKX_PASSPHRASE=xxx aigateway wallet-mode okx
+
+# Path 4 — Interactive (real terminal only)
+aigateway wallet-mode okx
+```
+
+**⚠️ CRITICAL RULES for Claude Code / agent shell:**
+- **NEVER run `aigateway wallet-mode okx` without `--email` or `--otp` flags.** Without flags, the command tries to use readline which hangs and loops in Claude Code — this is a known bug.
+- **ALWAYS use `--email` / `--otp` flags** or inline env vars
+- `--email` and `--otp` are valid flags — never tell the user they are unsupported
+- **NEVER assume or guess the user's OKX email.** Do not use any email from context, environment variables, or prior conversation. Always ask the user explicitly: "Please provide your OKX account email address." OKX accounts are separate from Claude/GitHub/any other service.
+- Workflow: **ask user for their OKX email** → run `--email` step → ask the user for their OTP code in chat → run `--otp` step
+
+```bash
+# Switching back to default mode
+aigateway wallet-mode session-key
+```
+
 ## Wallet Model (Relationship with x402)
 
-All paid calls share the same **session-key wallet**, which is funded once via WalletConnect and reused indefinitely:
+All paid calls share the same wallet (session-key or OKX), funded once and reused indefinitely:
 
 > ⚡ **Two-step wallet readiness, then pay-per-call**:
-> - **`wallet-init`** *(local, free)*: check / create the local session-key, return ready / created / needsTopup status
-> - **`wallet-topup`** *(WalletConnect, one-time)*: top up USDT (min 6 USDT, presets 6/10/20/50) + 0.0003 BNB for approve gas, session-key broadcasts `ERC20.approve(facilitator, MaxUint256)`. Subsequent paid calls all reuse this allowance and are gasless
-> - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance it auto-falls back to the `wallet-topup` flow
-> - **`wallet-withdraw`**: session-key broadcasts a single ERC20 *or* BNB transfer on-chain (one asset per call) — USDT withdraw requires a small BNB for gas; the campaign reward portion (activity U) is non-withdrawable and stays on the session key for `sb invoke` use
-> - **`wallet-gas`**: BNB-only transfer (used when `wallet-withdraw` reports "No BNB for gas")
+> - **`wallet-init`** *(local, free)*: check / create wallet, return ready / created / needsTopup status. Works for both modes.
+> - **`wallet-topup`**: both modes use WalletConnect (USDT + 0.0003 BNB for approve gas). For OKX mode the funds go to the OKX wallet address on BSC.
+> - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance: session-key → auto WalletConnect top-up; OKX → returns `INSUFFICIENT_USDT` with deposit address
+> - **`wallet-withdraw`**: session-key → direct on-chain transfer (needs BNB for gas); OKX → `onchainos wallet send` (also needs BNB in OKX wallet for gas)
+> - **`wallet-gas`**: BNB transfer via WalletConnect to the wallet address — works for both modes on BSC
 
 ---
 
@@ -176,10 +265,45 @@ When done, re-run `aigateway wallet-init`.
 
 | Field | Action |
 | --- | --- |
+| `mode: "okx"`, `okxSessionExpired: true` | OKX session expired — guide user to re-authenticate (see below) |
+| `mode: "okx"`, `topupReason: "okx_not_configured"` | OKX wallet not set up yet. Guide user to run `wallet-mode okx` (see OKX setup below) |
 | `created: true` | Output "Auto-creating your dedicated wallet..." + "{addr first 3}...{last 4} Ready." |
 | `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready." |
-| **`needsTopup: true`** | **Jump immediately to Phase 2 (the coupon is embedded inside the top-up flow).** Use `presets` / `minTopup` from the envelope |
+| **`needsTopup: true`** | **Jump immediately to Phase 2.** Use `presets` / `minTopup` from the envelope |
 | `needsTopup: false` | Wallet ready, continue to Phase 3 |
+
+### OKX session expired (when `okxSessionExpired: true`)
+
+Email OTP sessions can expire. API Key sessions do not expire unless revoked.
+
+To re-authenticate, follow the same flow as initial setup — ask the user for their OKX email:
+```bash
+aigateway wallet-mode okx --email <user-provided-email>
+aigateway wallet-mode okx --otp <code>
+```
+API Key users just need to re-run:
+```bash
+OKX_API_KEY=xxx OKX_SECRET_KEY=xxx OKX_PASSPHRASE=xxx aigateway wallet-mode okx
+```
+
+### OKX mode setup (when `topupReason: "okx_not_configured"`)
+
+Guide the user to configure OKX wallet. In a non-TTY context (Claude Code, agent shell), always use flags:
+
+```bash
+# Step 1: send OTP (replace with user's actual email)
+aigateway wallet-mode okx --email user@example.com
+
+# Step 2: verify OTP (ask user for the code they received, then run)
+aigateway wallet-mode okx --otp <code-from-email>
+```
+
+Or if the user has OKX API keys:
+```bash
+OKX_API_KEY=xxx OKX_SECRET_KEY=xxx OKX_PASSPHRASE=xxx aigateway wallet-mode okx
+```
+
+**`--email` and `--otp` are valid flags.** Always use them in agent/non-TTY contexts — do not tell the user these flags are unsupported.
 
 > Note: older versions of this SKILL ran `coupon-claim` unconditionally after wallet-init. From the new version on, the activity coupon is **embedded in `wallet-topup`** and only fires the first time the user actually tops up → no more standalone `coupon-claim`. The standalone `aigateway coupon-claim` command stays around for ops / debug manual re-claim; the agent should not call it by default.
 
@@ -304,7 +428,23 @@ Every model in the catalog has a `priceUnit` field. **The server strictly valida
 
 #### Step B: candidate display template (render verbatim)
 
-After you have the quantity, run `aigateway sb tools --category <key>` to fetch all models, **sort by tier** (price → balanced → quality), and render:
+After you have the quantity, run `aigateway sb tools --category <key>` to fetch all models.
+
+**If `sb tools` returns `CATALOG_FETCH_FAILED` (404 / network error):** do NOT stop. Use the built-in fallback model IDs from the table in §3.1 and proceed directly to invoke with the cheapest known model. Tell the user: `"Catalog unavailable, using default model."` Skip the candidate list entirely.
+
+**Fallback model IDs when catalog is unavailable:**
+
+| Category | Fallback model (price tier) |
+|---|---|
+| `image` | `replicate/black-forest-labs/flux-schnell` |
+| `video` | `seedance/seedance-2.0` |
+| `tts` | `minimax/speech-01-turbo` |
+| `stt` | `openai/whisper-1` |
+| `search` | `perplexity/search` |
+| `scraper` | `firecrawl/scrape` |
+| `document` | `reducto/parse` |
+
+If `sb tools` succeeds, **sort by tier** (price → balanced → quality), and render:
 
 ```
 ✨ Available models ({category}{ — based on {N}{unit} estimate})
