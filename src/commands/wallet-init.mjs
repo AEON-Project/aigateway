@@ -13,7 +13,7 @@
  *   - data.needsTopup=false → can proceed directly to sb invoke
  */
 import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
-import { getCombinedBalance, getAllowance } from "../balance.mjs";
+import { getCombinedBalance, getAllowance, getBalanceByAddress } from "../balance.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
@@ -25,6 +25,68 @@ import { emitOk, logInfo } from "../output.mjs";
 export async function initWallet(opts) {
   const config = loadConfig();
   const { appId } = opts;
+
+  // ── OKX mode: no private key, query balance directly by stored address ────
+  if (config.mode === 'okx') {
+    if (!config.address) {
+      emitOk("wallet-init", {
+        ready: false,
+        mode: 'okx',
+        needsTopup: true,
+        topupReason: 'okx_not_configured',
+        message: "OKX wallet not configured. Run: aigateway wallet-mode okx",
+        appId,
+      }, { ready: false, mode: 'okx', appId });
+      return;
+    }
+
+    let usdt = "0", bnb = "0", allowance = 0n, chainCheckOk = true, chainCheckError = null;
+    let usdtNum = 0;
+    const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+
+    try {
+      const bal = await getBalanceByAddress(config.address, { withToken: true });
+      usdt = bal.usdt;
+      bnb  = bal.bnb;
+      usdtNum = parseFloat(usdt);
+      allowance = await getAllowance(config.address);
+      logInfo(`OKX Wallet: ${config.address}`);
+      logInfo(`Balance: ${usdt} USDT, ${bnb} BNB`);
+    } catch (e) {
+      chainCheckOk = false;
+      chainCheckError = e.message;
+      logInfo(`Chain status check failed: ${e.message}`);
+    }
+
+    let needsTopup = false;
+    let topupReason = null;
+    if (!chainCheckOk) {
+      needsTopup = true; topupReason = "chain_check_failed";
+    } else if (usdtNum < LOW_BALANCE_THRESHOLD) {
+      needsTopup = true; topupReason = "low_balance";
+    } else if (allowance === 0n) {
+      needsTopup = true; topupReason = "no_approve";
+    }
+
+    const data = {
+      ready: true,
+      mode: 'okx',
+      appId,
+      address: config.address,
+      usdt,
+      bnb,
+      allowance: allowance.toString(),
+      needsTopup,
+      topupReason,
+      minTopup: MIN_TOPUP_USDT,
+      presets: TOPUP_PRESETS,
+      chainCheck: chainCheckOk ? "ok" : { error: chainCheckError },
+    };
+    emitOk("wallet-init", data, data);
+    return;
+  }
+
+  // ── Default: local session key ────────────────────────────────────────────
   let created = false;
 
   if (!config.privateKey) {

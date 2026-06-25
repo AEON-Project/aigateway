@@ -1,0 +1,158 @@
+/**
+ * OKX Agentic Wallet integration: wraps the `onchainos` CLI as a remote EVM signer.
+ *
+ * API keys (okxApiKey / okxSecretKey / okxPassphrase) stored in ~/.aigateway/config.json
+ * are automatically injected as env vars when spawning onchainos, so the caller never has
+ * to set OKX_* env vars manually after running `aigateway wallet-mode okx`.
+ */
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
+import { loadConfig } from './config.mjs';
+
+const execFileAsync = promisify(execFile);
+
+function buildEnv() {
+  const config = loadConfig();
+  const env = { ...process.env };
+  if (config.okxApiKey    && !env.OKX_API_KEY)    env.OKX_API_KEY    = config.okxApiKey;
+  if (config.okxSecretKey && !env.OKX_SECRET_KEY) env.OKX_SECRET_KEY = config.okxSecretKey;
+  if (config.okxPassphrase && !env.OKX_PASSPHRASE) env.OKX_PASSPHRASE = config.okxPassphrase;
+  return env;
+}
+
+async function run(args, { timeout = 30_000 } = {}) {
+  try {
+    const { stdout } = await execFileAsync('onchainos', args, {
+      env: buildEnv(),
+      timeout,
+    });
+    const text = stdout.trim();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { raw: text };
+    }
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      throw new Error(
+        'onchainos CLI not found. Run: aigateway wallet-mode okx  to install automatically.',
+      );
+    }
+    const msg = ((err.stderr || err.stdout || '').trim()) || err.message;
+    throw new Error(msg);
+  }
+}
+
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+export async function checkOnchainos() {
+  try {
+    await execFileAsync('onchainos', ['--version'], {
+      env: buildEnv(),
+      timeout: 5_000,
+    });
+    return true;
+  } catch (err) {
+    return err.code !== 'ENOENT';
+  }
+}
+
+export async function installOnchainos() {
+  return new Promise((resolve, reject) => {
+    const isWin = process.platform === 'win32';
+    const [cmd, ...args] = isWin
+      ? ['powershell', '-Command', 'irm https://raw.githubusercontent.com/okx/onchainos-skills/main/install.ps1 | iex']
+      : ['sh', '-c', 'curl -sSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | sh'];
+    const proc = spawn(cmd, args, { stdio: 'inherit' });
+    proc.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`onchainos installation failed (exit code ${code})`));
+    });
+    proc.on('error', (err) => reject(new Error(`Failed to run installer: ${err.message}`)));
+  });
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export async function loginWithEmail(email) {
+  return run(['wallet', 'login', email]);
+}
+
+export async function verifyOtp(otp) {
+  return run(['wallet', 'verify', otp]);
+}
+
+export async function walletStatus() {
+  return run(['wallet', 'status']);
+}
+
+// ─── Address discovery ────────────────────────────────────────────────────────
+
+export async function getOkxEvmAddress() {
+  const result = await run(['wallet', 'balance']);
+  // Scenario 1 response: evmAddress is a top-level field
+  if (result.evmAddress && /^0x[a-fA-F0-9]{40}$/.test(result.evmAddress)) {
+    return result.evmAddress;
+  }
+  // Fallback: scan the JSON for the first 0x address
+  const match = JSON.stringify(result).match(/"(0x[a-fA-F0-9]{40})"/);
+  if (!match) {
+    throw new Error(
+      'Cannot read OKX wallet EVM address. ' +
+      'Make sure you are logged in: onchainos wallet login <email>',
+    );
+  }
+  return match[1];
+}
+
+// ─── Signing (used by createOkxX402Api in x402.mjs) ──────────────────────────
+
+// EIP-712 sign: returns hex signature string (0x...)
+export async function signEIP712WithOkx(address, typedData) {
+  const result = await run([
+    'wallet', 'sign-message',
+    '--chain', 'bsc',
+    '--type',  'eip712',
+    '--message', JSON.stringify(typedData),
+    '--from',  address,
+    '--force',
+  ], { timeout: 60_000 });
+  if (!result.signature) {
+    throw new Error(`OKX EIP-712 signing failed: ${JSON.stringify(result)}`);
+  }
+  return result.signature;
+}
+
+// Contract call (approve etc.): returns txHash string
+export async function contractCallWithOkx(address, { to, data }) {
+  const result = await run([
+    'wallet', 'contract-call',
+    '--to',         to,
+    '--chain',      'bsc',
+    '--input-data', data,
+    '--from',       address,
+    '--force',
+  ], { timeout: 120_000 });
+  if (!result.txHash) {
+    throw new Error(`OKX contract-call failed: ${JSON.stringify(result)}`);
+  }
+  return result.txHash;
+}
+
+// ─── Transfer (used by wallet-withdraw) ──────────────────────────────────────
+
+export async function walletSendWithOkx({ recipient, amount, tokenAddress }) {
+  const args = [
+    'wallet', 'send',
+    '--readable-amount', String(amount),
+    '--recipient',      recipient,
+    '--chain',          'bsc',
+    '--force',
+  ];
+  if (tokenAddress) args.push('--contract-token', tokenAddress);
+  const result = await run(args, { timeout: 120_000 });
+  if (!result.txHash) {
+    throw new Error(`OKX wallet send failed: ${JSON.stringify(result)}`);
+  }
+  return result.txHash;
+}

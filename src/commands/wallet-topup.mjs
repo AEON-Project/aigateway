@@ -32,10 +32,32 @@ import { checkCouponStatus, claimCoupon, reportMonitorAmount } from "../coupon.m
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 export async function topup(opts) {
+  const config = loadConfig();
+  const appId = opts.appId;
+
+  // ── OKX mode: no WalletConnect — just show the deposit address ───────────
+  if (config.mode === 'okx') {
+    if (!config.address) {
+      emitErr("wallet-topup", "OKX_NOT_CONFIGURED", {
+        message: "OKX wallet not configured. Run: aigateway wallet-mode okx",
+        appId,
+      });
+      return;
+    }
+    emitOk("wallet-topup", {
+      mode: 'okx',
+      appId,
+      message: "Please send USDT (BSC BEP-20) directly to your OKX wallet address.",
+      address: config.address,
+      network: "BSC Mainnet (Chain ID: 56)",
+    }, { mode: 'okx', address: config.address });
+    return;
+  }
+
+  // ── Default: WalletConnect ─────────────────────────────────────────────────
   logInfo("Topping up wallet: verifying readiness...");
   const privateKey = resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
   const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-  const appId = opts.appId;
 
   if (!privateKey) {
     emitErr("wallet-topup", "WALLET_NOT_CONFIGURED", {

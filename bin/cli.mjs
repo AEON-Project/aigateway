@@ -139,6 +139,15 @@ sb
   });
 
 program
+  .command("wallet-mode")
+  .description("Switch payment mode: okx (OKX Agentic Wallet) | session-key (local default)")
+  .argument("<mode>", "okx or session-key")
+  .action(async (mode) => {
+    const { setWalletMode } = await import("../src/commands/wallet-mode.mjs");
+    return setWalletMode(mode);
+  });
+
+program
   .command("coupon-claim")
   .description("AEON x BNB Chain AI Agent Campaign — check / claim the activity coupon token")
   .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)

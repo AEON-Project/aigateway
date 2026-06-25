@@ -4,9 +4,37 @@ import { checkCouponStatus } from "../coupon.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 export async function wallet(opts) {
+  const config = loadConfig();
+  const { appId } = opts;
+
+  // ── OKX mode ──────────────────────────────────────────────────────────────
+  if (config.mode === 'okx') {
+    if (!config.address) {
+      emitErr("wallet-balance", "OKX_NOT_CONFIGURED", {
+        message: "OKX wallet not configured. Run: aigateway wallet-mode okx",
+        appId,
+      });
+      return;
+    }
+    try {
+      const bal = await getBalanceByAddress(config.address);
+      emitOk("wallet-balance", {
+        appId,
+        mode: 'okx',
+        address: config.address,
+        usdt: bal.usdt,
+        bnb:  bal.bnb,
+        network: "BSC Mainnet (Chain ID: 56)",
+      }, { mode: 'okx', address: config.address, usdt: bal.usdt, bnb: bal.bnb });
+    } catch (error) {
+      emitErr("wallet-balance", "BALANCE_CHECK_FAILED", { message: error.message, appId });
+    }
+    return;
+  }
+
+  // ── Default: local session key ────────────────────────────────────────────
   const privateKey = resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
   const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-  const { appId } = opts;
 
   if (!privateKey) {
     emitErr("wallet-balance", "WALLET_NOT_CONFIGURED", { appId });

@@ -9,6 +9,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { bsc } from "viem/chains";
 import { createInterface } from "node:readline/promises";
 import { loadConfig, resolve, getOrCreateDeviceId } from "../config.mjs";
+import { walletSendWithOkx } from "../okx-wallet.mjs";
 import { getBalanceByAddress } from "../balance.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
 import { BSC_RPC_URL, USDT_BSC, ERC20_TRANSFER_ABI } from "../constants.mjs";
@@ -80,6 +81,41 @@ export async function withdraw(opts) {
   const config = loadConfig();
   const { appId } = opts;
 
+  const mainWallet = opts.to || config.mainWallet;
+
+  // ── OKX mode ──────────────────────────────────────────────────────────────
+  if (config.mode === 'okx') {
+    if (!config.address) {
+      emitErr("wallet-withdraw", "OKX_NOT_CONFIGURED", {
+        message: "OKX wallet not configured. Run: aigateway wallet-mode okx",
+        appId,
+      });
+      return;
+    }
+    if (!mainWallet) {
+      emitErr("wallet-withdraw", "NO_MAIN_WALLET", {
+        message: "No destination address. Use --to <address> to specify.",
+        appId,
+      });
+      return;
+    }
+    const bal = await getBalanceByAddress(config.address);
+    const amount = opts.amount === 'all' || !opts.amount ? bal.usdt : opts.amount;
+    logInfo(`Withdrawing ${amount} USDT from OKX wallet ${config.address} → ${mainWallet}`);
+    try {
+      const txHash = await walletSendWithOkx({
+        recipient: mainWallet,
+        amount,
+        tokenAddress: USDT_BSC,
+      });
+      emitOk("wallet-withdraw", { mode: 'okx', appId, txHash, to: mainWallet, amount }, { mode: 'okx', txHash, to: mainWallet, amount });
+    } catch (err) {
+      emitErr("wallet-withdraw", "WITHDRAW_FAILED", { message: err.message, appId });
+    }
+    return;
+  }
+
+  // ── Default: local session key ────────────────────────────────────────────
   if (!config.privateKey || !config.address) {
     emitErr("wallet-withdraw", "WALLET_NOT_CONFIGURED", {
       message: "No session key found. Nothing to withdraw.",
@@ -87,8 +123,6 @@ export async function withdraw(opts) {
     });
     return;
   }
-
-  const mainWallet = opts.to || config.mainWallet;
   if (!mainWallet) {
     emitErr("wallet-withdraw", "NO_MAIN_WALLET", {
       message: "No main wallet address found. Use --to <address> to specify.",

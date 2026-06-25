@@ -13,9 +13,9 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import axios from "axios";
-import { createX402Api, decodePaymentResponse, fetchPaymentRequirements, selectAcceptByBalance } from "../x402.mjs";
-import { resolve, getOrCreateDeviceId } from "../config.mjs";
-import { getWalletBalance, getAllowance } from "../balance.mjs";
+import { createX402Api, createOkxX402Api, decodePaymentResponse, fetchPaymentRequirements, selectAcceptByBalance } from "../x402.mjs";
+import { resolve, loadConfig, getOrCreateDeviceId } from "../config.mjs";
+import { getWalletBalance, getAllowance, getBalanceByAddress } from "../balance.mjs";
 import { USDT_BSC } from "../constants.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
 import { parseUnits } from "viem";
@@ -74,14 +74,20 @@ function parseInputs(raw) {
  * any thin wrapper that needs to remap the envelope shape.
  */
 export async function invoke(opts) {
+  const config = loadConfig();
+  const isOkx = config.mode === 'okx';
+
   const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-  const privateKey = resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
+  const privateKey = isOkx ? null : resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
   const { appId, model } = opts;
 
   if (!serviceUrl) {
     return { ok: false, code: "SERVICE_URL_MISSING", details: { appId } };
   }
-  if (!privateKey) {
+  if (isOkx && !config.address) {
+    return { ok: false, code: "OKX_NOT_CONFIGURED", details: { appId, message: "Run: aigateway wallet-mode okx" } };
+  }
+  if (!isOkx && !privateKey) {
     return { ok: false, code: "WALLET_NOT_CONFIGURED", details: { appId } };
   }
   if (!model || !String(model).trim()) {
@@ -197,9 +203,11 @@ export async function invoke(opts) {
   let paymentMethod = "USDT"; // "USDT" | "COUPON" — internal diagnostic
 
   try {
-    const bal = await getWalletBalance(privateKey, { withToken: true });
+    const bal = isOkx
+      ? await getBalanceByAddress(config.address, { withToken: true })
+      : await getWalletBalance(privateKey, { withToken: true });
     const { address, usdt, bnb, bnbRaw, token, tokenRaw, usdtRaw } = bal;
-    sessionAddress = address;
+    sessionAddress = isOkx ? config.address : address;
     // 拿到 address 后查 status (顺便缓存 campaignActive 用于 envelope 余额合并)
     const status = await checkCouponStatus({
       serviceUrl,
@@ -314,7 +322,8 @@ export async function invoke(opts) {
       logInfo("Allowance sufficient, no approve needed.");
     } else {
       logInfo(`Allowance ${allowance} < required ${requiredWei}; approve needed.`);
-      if (bnbRaw === 0n) {
+      // OKX mode: gas is handled by OKX internally — no BNB transfer needed.
+      if (!isOkx && bnbRaw === 0n) {
         needGas = true;
         logInfo("No BNB for approve gas, will request BNB transfer.");
       }
@@ -374,6 +383,19 @@ export async function invoke(opts) {
   }
 
   if (needTopup || needGas) {
+    if (isOkx) {
+      return {
+        ok: false,
+        code: "INSUFFICIENT_USDT",
+        details: {
+          message: `Insufficient USDT. Please send at least ${topupAmount} USDT (BSC BEP-20) to your OKX wallet.`,
+          address: config.address,
+          shortfall: topupAmount,
+          hint: `Run: aigateway wallet-topup  to see deposit instructions.`,
+          appId,
+        },
+      };
+    }
     logInfo("Funding flow triggered...");
     try {
       await fundSessionKey({
@@ -415,7 +437,7 @@ export async function invoke(opts) {
   }
 
   // Sign x402 payment & retry the request.
-  const { client } = createX402Api(privateKey);
+  const { client } = isOkx ? createOkxX402Api(config.address) : createX402Api(privateKey);
   logInfo(`Submitting payment & request: ${url}`);
 
   let response;

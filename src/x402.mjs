@@ -5,10 +5,11 @@ import { x402Client, wrapAxiosWithPayment, x402HTTPClient } from "@aeon-ai-pay/a
 import { registerExactEvmScheme } from "@aeon-ai-pay/evm/exact/client";
 import { toClientEvmSigner } from "@aeon-ai-pay/evm";
 import { privateKeyToAccount } from "viem/accounts";
-import { createWalletClient, http, publicActions, formatUnits } from "viem";
+import { createWalletClient, createPublicClient, http, publicActions, formatUnits } from "viem";
 import { bsc } from "viem/chains";
 import { BSC_RPC_URL } from "./constants.mjs";
 import axios from "axios";
+import { signEIP712WithOkx, contractCallWithOkx } from "./okx-wallet.mjs";
 
 /**
  * Build an x402 axios client with the EVM signer pre-registered.
@@ -61,6 +62,34 @@ export function createX402Api(privateKey) {
     address: evmAccount.address,
     getOrderNo: () => capturedOrderNo,
   };
+}
+
+/**
+ * Build an x402 client backed by OKX TEE signing.
+ * Drop-in replacement for createX402Api() when config.mode === 'okx'.
+ * Uses publicClient (no private key) for readContract / waitForTransactionReceipt;
+ * delegates signTypedData and sendTransaction to the onchainos CLI.
+ *
+ * @param {string} address - OKX wallet EVM address (from config.address)
+ */
+export function createOkxX402Api(address) {
+  const publicClient = createPublicClient({
+    chain: bsc,
+    transport: http(BSC_RPC_URL),
+  });
+
+  const evmSigner = toClientEvmSigner({
+    address,
+    signTypedData: (typedData) => signEIP712WithOkx(address, typedData),
+    readContract:  (args) => publicClient.readContract({ ...args, args: args.args || [] }),
+    sendTransaction: (args) => contractCallWithOkx(address, args),
+    waitForTransactionReceipt: (args) => publicClient.waitForTransactionReceipt(args),
+  });
+
+  const client = new x402Client();
+  registerExactEvmScheme(client, { signer: evmSigner });
+
+  return { client, address, getOrderNo: () => null };
 }
 
 /**

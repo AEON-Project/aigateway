@@ -19,6 +19,15 @@ export async function gas(opts) {
   const config = loadConfig();
   const { appId } = opts;
 
+  if (config.mode === 'okx') {
+    emitOk("wallet-gas", {
+      mode: 'okx',
+      appId,
+      message: "OKX mode: gas fees are handled by OKX internally. No manual BNB top-up required.",
+    }, { mode: 'okx' });
+    return;
+  }
+
   if (!config.privateKey || !config.address) {
     emitErr("wallet-gas", "WALLET_NOT_CONFIGURED", {
       message: "No local wallet found. Run 'aigateway wallet-init' first to auto-create one.",
