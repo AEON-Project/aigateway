@@ -26,7 +26,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.3.7"
+  version: "0.3.8"
   author: AEON-Project
   openclaw:
     requires:
