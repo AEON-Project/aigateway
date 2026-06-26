@@ -31,12 +31,18 @@ export async function setWalletMode(mode, opts = {}) {
     return;
   }
 
-  // ── session-key: just flip the flag ──────────────────────────────────────
+  // ── session-key: flip the flag and restore address from private key ─────
   if (mode === 'session-key') {
     const config = loadConfig();
     config.mode = 'session-key';
+    // Restore config.address to the session key address (may have been
+    // overwritten with the OKX wallet address when switching to okx mode).
+    if (config.privateKey) {
+      const { privateKeyToAccount } = await import('viem/accounts');
+      config.address = privateKeyToAccount(config.privateKey).address;
+    }
     saveConfig(config);
-    logInfo('Switched to session-key mode.');
+    logInfo(`Switched to session-key mode. Wallet: ${config.address || '(none)'}`);
     emitOk('wallet-mode', { mode: 'session-key' }, { mode: 'session-key' });
     return;
   }

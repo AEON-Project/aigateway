@@ -30,7 +30,13 @@ export async function gas(opts) {
   }
 
   const amount = opts.amount || DEFAULT_GAS_AMOUNT;
-  const sessionAddress = config.address;
+  // In session-key mode, always derive address from private key to avoid
+  // using a stale config.address left over from a previous okx-mode switch.
+  let sessionAddress = config.address;
+  if (config.mode !== 'okx' && config.privateKey) {
+    const { privateKeyToAccount } = await import('viem/accounts');
+    sessionAddress = privateKeyToAccount(config.privateKey).address;
+  }
   logInfo(`Local wallet: ${sessionAddress}`);
   logInfo(`App ID:       ${appId}`);
 

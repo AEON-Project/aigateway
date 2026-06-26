@@ -77,3 +77,18 @@ export function isSessionKeyMode() {
     const config = loadConfig();
     return config.mode === "session-key";
 }
+
+/**
+ * Get the correct wallet address for the current mode.
+ * session-key: always derive from privateKey (config.address may be stale after okx↔session switch)
+ * okx:         use config.address (OKX wallet EVM address)
+ */
+export async function getWalletAddress() {
+    const config = loadConfig();
+    if (config.mode === 'okx') return config.address || null;
+    if (config.privateKey) {
+        const { privateKeyToAccount } = await import('viem/accounts');
+        return privateKeyToAccount(config.privateKey).address;
+    }
+    return config.address || null;
+}
