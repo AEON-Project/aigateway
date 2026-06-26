@@ -8,8 +8,9 @@ import { xLayer } from "viem/chains";
 import { createInterface } from "node:readline/promises";
 import { loadConfig, resolve } from "../config.mjs";
 import { walletSendWithOkx } from "../okx-wallet.mjs";
+import { getChainConfig } from "../chain-config.mjs";
 import { getBalanceByAddress } from "../balance.mjs";
-import { XLAYER_RPC_URL, USDG_XLAYER, USDG_DECIMALS, ERC20_TRANSFER_ABI } from "../constants.mjs";
+import { ERC20_TRANSFER_ABI } from "../constants.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 const BNB_TRANSFER_GAS = 21000n;
@@ -31,23 +32,23 @@ function parseAmount(input, available, decimals = 18) {
   }
 }
 
-async function promptTokenAndAmount(balance) {
+async function promptTokenAndAmount(balance, cfg) {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
     logInfo("");
     logInfo("Select asset to withdraw:");
-    logInfo("  1) USDG");
-    logInfo("  2) OKB");
+    logInfo(`  1) ${cfg.tokenSymbol}`);
+    logInfo(`  2) ${cfg.nativeSymbol}`);
     let token = null;
     while (token === null) {
       const ans = (await rl.question("Enter choice [1-2]: ")).trim();
-      if (ans === "1") token = "USDG";
-      else if (ans === "2") token = "OKB";
+      if (ans === "1") token = cfg.tokenSymbol;
+      else if (ans === "2") token = cfg.nativeSymbol;
       else logInfo("Invalid choice, please retry.");
     }
 
-    const available = token === "USDG" ? balance.usdtRaw : balance.bnbRaw;
-    const availableStr = token === "USDG" ? balance.usdt : balance.bnb;
+    const available = token === cfg.tokenSymbol ? balance.usdtRaw : balance.bnbRaw;
+    const availableStr = token === cfg.tokenSymbol ? balance.usdt : balance.bnb;
     if (available === 0n) {
       logInfo(`${token} balance is 0, nothing to withdraw.`);
       return { token, raw: 0n };
@@ -77,6 +78,7 @@ export async function withdraw(opts) {
   logInfo("Reclaiming funds...");
   const config = loadConfig();
   const { appId } = opts;
+  const cfg = getChainConfig();
 
   const mainWallet = opts.to || config.mainWallet;
 
@@ -98,7 +100,7 @@ export async function withdraw(opts) {
     }
     const bal = await getBalanceByAddress(config.address);
     const amount = opts.amount === 'all' || !opts.amount ? bal.usdt : opts.amount;
-    logInfo(`Withdrawing ${amount} USDG from OKX wallet ${config.address} → ${mainWallet}`);
+    logInfo(`Withdrawing ${amount} ${cfg.tokenSymbol} from OKX wallet ${config.address} → ${mainWallet}`);
     try {
       const txHash = await walletSendWithOkx({
         recipient: mainWallet,
@@ -148,8 +150,8 @@ export async function withdraw(opts) {
   logInfo(`Withdraw to: ${mainWallet}`);
   logInfo("");
   logInfo("Balance:");
-  logInfo(`  USDG: ${balance.usdt}`);
-  logInfo(`  OKB:  ${balance.bnb}  (gas token)`);
+  logInfo(`  ${cfg.tokenSymbol}: ${balance.usdt}`);
+  logInfo(`  ${cfg.nativeSymbol}: ${balance.bnb}  (gas token)`);
 
   // ── Resolve token + amount ─────────────────────────────────────────────
   let token;
@@ -165,15 +167,15 @@ export async function withdraw(opts) {
       return;
     }
     const t = String(opts.token).toUpperCase();
-    if (t !== "USDG" && t !== "OKB") {
+    if (t !== cfg.tokenSymbol && t !== cfg.nativeSymbol) {
       emitErr("wallet-withdraw", "INVALID_TOKEN", {
-        message: "--token must be USDG or OKB.",
+        message: `--token must be ${cfg.tokenSymbol} or ${cfg.nativeSymbol}.`,
         appId,
       });
       return;
     }
     token = t;
-    const available = token === "USDG" ? balance.usdtRaw : balance.bnbRaw;
+    const available = token === cfg.tokenSymbol ? balance.usdtRaw : balance.bnbRaw;
     const parsed = parseAmount(opts.amount, available);
     if (parsed === null) {
       emitErr("wallet-withdraw", "AMOUNT_INVALID", {
@@ -184,9 +186,9 @@ export async function withdraw(opts) {
     }
     if (parsed > available) {
       emitErr("wallet-withdraw", "AMOUNT_EXCEEDS_BALANCE", {
-        message: `Requested ${opts.amount} ${token} but only ${token === "USDG" ? balance.usdt : balance.bnb} available.`,
+        message: `Requested ${opts.amount} ${token} but only ${token === cfg.tokenSymbol ? balance.usdt : balance.bnb} available.`,
         requested: opts.amount,
-        available: token === "USDG" ? balance.usdt : balance.bnb,
+        available: token === cfg.tokenSymbol ? balance.usdt : balance.bnb,
         token,
         appId,
       });
@@ -197,19 +199,19 @@ export async function withdraw(opts) {
     // Neither flag supplied: prompt in TTY, error in non-TTY.
     if (!isTTY()) {
       emitErr("wallet-withdraw", "NEEDS_AMOUNT", {
-        message: "Non-interactive shell: pass --amount <n> --token <USDG|OKB>.",
+        message: `Non-interactive shell: pass --amount <n> --token <${cfg.tokenSymbol}|${cfg.nativeSymbol}>.`,
         appId,
       });
       return;
     }
     if (balance.usdtRaw === 0n && balance.bnbRaw === 0n) {
       emitErr("wallet-withdraw", "NO_FUNDS", {
-        message: "No withdrawable funds (USDG and OKB are both 0).",
+        message: `No withdrawable funds (${cfg.tokenSymbol} and ${cfg.nativeSymbol} are both 0).`,
         appId,
       });
       return;
     }
-    const picked = await promptTokenAndAmount(balance);
+    const picked = await promptTokenAndAmount(balance, cfg);
     token = picked.token;
     amountRaw = picked.raw;
   }
@@ -228,13 +230,13 @@ export async function withdraw(opts) {
 
   // ── Execute transfer ───────────────────────────────────────────────────
   let txHash = null;
-  if (token === "USDG") {
+  if (token === cfg.tokenSymbol) {
     if (balance.bnbRaw === 0n) {
-      emitErr("wallet-withdraw", "INSUFFICIENT_OKB", {
-        message: "No OKB for gas. USDG withdraw requires OKB to pay X Layer gas fees.",
+      emitErr("wallet-withdraw", "INSUFFICIENT_GAS", {
+        message: `No ${cfg.nativeSymbol} for gas. ${cfg.tokenSymbol} withdraw requires ${cfg.nativeSymbol} to pay gas fees.`,
         address: sessionAddress,
         appId,
-        hint: "Run 'aigateway wallet-gas' to send OKB via WalletConnect, then retry.",
+        hint: `Run 'aigateway wallet-gas' to send ${cfg.nativeSymbol} via WalletConnect, then retry.`,
       });
       return;
     }
@@ -244,12 +246,12 @@ export async function withdraw(opts) {
         functionName: "transfer",
         args: [mainWallet, amountRaw],
       });
-      logInfo(`\nTransferring ${formatUnits(amountRaw, USDG_DECIMALS)} USDG → ${mainWallet}...`);
-      txHash = await walletClient.sendTransaction({ to: USDG_XLAYER, data });
-      logInfo(`USDT tx: ${txHash}`);
+      logInfo(`\nTransferring ${formatUnits(amountRaw, cfg.tokenDecimals)} ${cfg.tokenSymbol} → ${mainWallet}...`);
+      txHash = await walletClient.sendTransaction({ to: cfg.token, data });
+      logInfo(`${cfg.tokenSymbol} tx: ${txHash}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
-      if (receipt.status !== "success") throw new Error("USDT transfer reverted");
-      logInfo("USDT reclaimed.");
+      if (receipt.status !== "success") throw new Error(`${cfg.tokenSymbol} transfer reverted`);
+      logInfo(`${cfg.tokenSymbol} reclaimed.`);
     } catch (error) {
       emitErr("wallet-withdraw", "WITHDRAW_FAILED", {
         message: `USDG withdraw failed: ${error.message}`,
@@ -267,8 +269,8 @@ export async function withdraw(opts) {
       if (amountRaw === balance.bnbRaw) {
         sendable = balance.bnbRaw - gasCost;
         if (sendable <= 0n) {
-          emitErr("wallet-withdraw", "INSUFFICIENT_BNB", {
-            message: "BNB balance too small to cover transfer gas.",
+          emitErr("wallet-withdraw", "INSUFFICIENT_NATIVE", {
+            message: `${cfg.nativeSymbol} balance too small to cover transfer gas.`,
             address: sessionAddress,
             appId,
           });
@@ -279,12 +281,12 @@ export async function withdraw(opts) {
           message: `Requested ${formatUnits(amountRaw, 18)} BNB + gas exceeds balance ${balance.bnb}.`,
           requested: formatUnits(amountRaw, 18),
           available: balance.bnb,
-          token: "OKB",
+          token: cfg.nativeSymbol,
           appId,
         });
         return;
       }
-      logInfo(`\nTransferring ${formatUnits(sendable, 18)} OKB → ${mainWallet}...`);
+      logInfo(`\nTransferring ${formatUnits(sendable, 18)} ${cfg.nativeSymbol} → ${mainWallet}...`);
       txHash = await walletClient.sendTransaction({
         to: mainWallet,
         value: sendable,
@@ -293,8 +295,8 @@ export async function withdraw(opts) {
       });
       logInfo(`BNB tx: ${txHash}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
-      if (receipt.status !== "success") throw new Error("BNB transfer reverted");
-      logInfo("BNB reclaimed.");
+      if (receipt.status !== "success") throw new Error(`${cfg.nativeSymbol} transfer reverted`);
+      logInfo(`${cfg.nativeSymbol} reclaimed.`);
     } catch (error) {
       emitErr("wallet-withdraw", "WITHDRAW_FAILED", {
         message: `BNB withdraw failed: ${error.message}`,

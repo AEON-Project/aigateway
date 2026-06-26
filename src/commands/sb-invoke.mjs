@@ -16,7 +16,7 @@ import axios from "axios";
 import { createX402Api, createOkxX402Api, decodePaymentResponse, fetchPaymentRequirements, selectAcceptByBalance } from "../x402.mjs";
 import { resolve, loadConfig, getOrCreateDeviceId } from "../config.mjs";
 import { getWalletBalance, getBalanceByAddress } from "../balance.mjs";
-import { USDG_XLAYER } from "../constants.mjs";
+import { getChainConfig } from "../chain-config.mjs";
 import { parseUnits } from "viem";
 import {
   fundSessionKey,
@@ -211,12 +211,12 @@ export async function invoke(opts) {
     const selection = selectAcceptByBalance(
       paymentReqEnvelope.accepts,
       { usdt: usdtRaw, token: 0n },
-      { preferredAsset: USDG_XLAYER, fallbackAsset: USDG_XLAYER, campaignActive: false },
+      { preferredAsset: getChainConfig().token, fallbackAsset: getChainConfig().token, campaignActive: false },
     );
     let chosenAccept = selection.chosen;
     if (!chosenAccept) {
       const usdgAccept = paymentReqEnvelope.accepts.find(
-        (a) => String(a.asset).toLowerCase() === USDG_XLAYER.toLowerCase(),
+        (a) => String(a.asset).toLowerCase() === getChainConfig().token.toLowerCase(),
       ) || paymentReqEnvelope.accepts[0];
       if (!usdgAccept) {
         return {
@@ -410,7 +410,7 @@ export async function invoke(opts) {
       // unwrap server envelope: { payer, transaction, data: <upstream-response> } → <upstream-response>
       raw: response.data?.data ?? response.data,
       paymentResponse,
-      paymentMethod: "USDG",
+      paymentMethod: paymentReq.asset,
       balance: {
         initial: balanceInitialUsdt,    // U total before invocation
         before: balanceBeforeChargeUsdt, // U total before charge (after topup)

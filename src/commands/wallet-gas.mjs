@@ -1,16 +1,17 @@
 /**
- * gas command: transfer OKB from the main wallet to the local wallet via WalletConnect
- * (used to pay gas during withdraw).
+ * wallet-gas: transfer native gas token (BNB on BSC / OKB on X Layer) to local wallet.
+ * Used before wallet-withdraw in session-key mode when native balance is 0.
  */
 import { loadConfig } from "../config.mjs";
 import { getBalanceByAddress } from "../balance.mjs";
+import { getChainConfig } from "../chain-config.mjs";
 import {
   withWallet,
   requestNativeTransfer,
   setStatus,
   WalletConnectError,
 } from "../walletconnect.mjs";
-import { XLAYER_RPC_URL } from "../constants.mjs";
+import { createPublicClient, http } from "viem";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 const DEFAULT_GAS_AMOUNT = "0.001";
@@ -18,10 +19,11 @@ const DEFAULT_GAS_AMOUNT = "0.001";
 export async function gas(opts) {
   const config = loadConfig();
   const { appId } = opts;
+  const cfg = getChainConfig();
 
   if (!config.privateKey && !config.address) {
     emitErr("wallet-gas", "WALLET_NOT_CONFIGURED", {
-      message: "No local wallet found. Run 'aigateway wallet-init' first to auto-create one.",
+      message: "No local wallet found. Run 'aigateway wallet-init' first.",
       appId,
     });
     return;
@@ -34,43 +36,36 @@ export async function gas(opts) {
 
   try {
     const bal = await getBalanceByAddress(sessionAddress);
-    logInfo(`Current balance: ${bal.bnb} OKB`);
+    logInfo(`Current balance: ${bal.bnb} ${cfg.nativeSymbol}`);
   } catch {}
 
-  let bnbTxHash = null;
+  let gasTxHash = null;
 
   try {
-    await withWallet({ amount, token: "OKB" }, async ({ signClient, session, peerAddress }) => {
-      const { createPublicClient, http } = await import("viem");
-      const { xLayer } = await import("viem/chains");
+    await withWallet({ amount, token: cfg.nativeSymbol, chain: cfg.wcChainId }, async ({ signClient, session, peerAddress }) => {
       const publicClient = createPublicClient({
-        chain: xLayer,
-        transport: http(XLAYER_RPC_URL, { timeout: 15000, retryCount: 2 }),
+        chain: cfg.chain,
+        transport: http(cfg.rpcUrl, { timeout: 15000, retryCount: 2 }),
       });
 
-      setStatus("signing", { amount, token: "OKB", to: sessionAddress });
-      logInfo(`\nRequesting OKB transfer: ${amount} OKB → ${sessionAddress}`);
+      setStatus("signing", { amount, token: cfg.nativeSymbol, to: sessionAddress });
+      logInfo(`\nRequesting ${cfg.nativeSymbol} transfer: ${amount} ${cfg.nativeSymbol} → ${sessionAddress}`);
       logInfo("Please confirm the transaction in your wallet app...");
 
-      bnbTxHash = await requestNativeTransfer(signClient, session, {
+      gasTxHash = await requestNativeTransfer(signClient, session, {
         from: peerAddress,
         to: sessionAddress,
         value: amount,
       });
-      setStatus("tx_submitted", { txHash: bnbTxHash, amount, token: "OKB" });
-      logInfo(`OKB transfer submitted: ${bnbTxHash}`);
+      setStatus("tx_submitted", { txHash: gasTxHash, amount, token: cfg.nativeSymbol });
+      logInfo(`${cfg.nativeSymbol} transfer submitted: ${gasTxHash}`);
       logInfo("Waiting for confirmation...");
 
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash: bnbTxHash,
-        timeout: 60_000,
-      });
-      if (receipt.status !== "success") {
-        throw new Error("OKB transfer transaction reverted");
-      }
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: gasTxHash, timeout: 60_000 });
+      if (receipt.status !== "success") throw new Error(`${cfg.nativeSymbol} transfer transaction reverted`);
 
-      setStatus("confirmed", { txHash: bnbTxHash, amount, token: "OKB" });
-      logInfo("OKB transfer confirmed.");
+      setStatus("confirmed", { txHash: gasTxHash, amount, token: cfg.nativeSymbol });
+      logInfo(`${cfg.nativeSymbol} transfer confirmed.`);
     });
   } catch (e) {
     if (e instanceof WalletConnectError) {
@@ -88,13 +83,9 @@ export async function gas(opts) {
     finalBalance = { bnb: "unknown" };
   }
 
-  const data = {
+  emitOk("wallet-gas", {
     appId,
-    localWallet: {
-      address: sessionAddress,
-      bnb: finalBalance.bnb,
-    },
-    transaction: bnbTxHash,
-  };
-  emitOk("wallet-gas", data, { success: true, ...data });
+    localWallet: { address: sessionAddress, bnb: finalBalance.bnb },
+    transaction: gasTxHash,
+  }, { success: true, appId, localWallet: { address: sessionAddress, bnb: finalBalance.bnb }, transaction: gasTxHash });
 }
