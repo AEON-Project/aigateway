@@ -21,7 +21,8 @@ export async function wallet(opts) {
       const bal = await getBalanceByAddress(config.address);
       emitOk("wallet-balance", {
         appId, mode: 'okx', address: config.address,
-        usdt: bal.usdt, bnb: bal.bnb, network,
+        usdt: bal.usdt, network,
+        // OKX mode: gas is handled internally, no need to show native token balance
       }, { mode: 'okx', address: config.address, usdt: bal.usdt });
     } catch (error) {
       emitErr("wallet-balance", "BALANCE_CHECK_FAILED", { message: error.message, appId });
