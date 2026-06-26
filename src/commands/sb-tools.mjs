@@ -18,7 +18,7 @@ import { emitOk, emitErr, logInfo } from "../output.mjs";
 import { fetchCatalog, findModel } from "../catalog.mjs";
 
 export async function sbTools(opts) {
-  const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+  const serviceUrl = resolveServiceUrl(opts.serviceUrl);
   const { appId } = opts;
   if (!serviceUrl) {
     emitErr("sb-tools", "SERVICE_URL_MISSING", { appId });

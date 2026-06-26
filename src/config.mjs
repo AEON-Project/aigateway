@@ -1,8 +1,10 @@
 /**
  * Config management: ~/.aigateway/config.json
- * Resolution priority: CLI args > env vars > config.json
  *
- * AEON AI Gateway uses a single x402 service (ai-api.aeon.xyz).
+ * General resolution priority: CLI args > env vars > config.json
+ * Service URL priority:        CLI args > config.json > env vars
+ *   (config file is authoritative for serviceUrl — prevents accidental
+ *    production requests when AIGATEWAY_SERVICE_URL env var is set)
  */
 import {readFileSync, writeFileSync, mkdirSync, chmodSync} from "fs";
 import {join} from "path";
@@ -67,6 +69,21 @@ export function resolve(cliValue, envKey, configKey) {
     if (process.env[envKey]) return process.env[envKey];
     const cfg = loadConfig();
     return cfg[configKey] || undefined;
+}
+
+/**
+ * Resolve serviceUrl with config-file-first priority:
+ *   CLI arg > config.json > AIGATEWAY_SERVICE_URL env var > built-in default
+ *
+ * Config file is authoritative so accidental env var overrides never
+ * silently send traffic to the wrong environment.
+ */
+export function resolveServiceUrl(cliValue) {
+    if (cliValue) return cliValue;
+    const cfg = loadConfig();
+    if (cfg.serviceUrl) return cfg.serviceUrl;
+    if (process.env.AIGATEWAY_SERVICE_URL) return process.env.AIGATEWAY_SERVICE_URL;
+    return DEFAULTS.serviceUrl;
 }
 
 export function getConfigPath() {

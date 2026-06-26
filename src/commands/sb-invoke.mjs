@@ -14,7 +14,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import axios from "axios";
 import { createX402Api, createOkxX402Api, decodePaymentResponse, fetchPaymentRequirements, selectAcceptByBalance } from "../x402.mjs";
-import { resolve, loadConfig, getOrCreateDeviceId } from "../config.mjs";
+import { resolve, resolveServiceUrl, loadConfig, getOrCreateDeviceId } from "../config.mjs";
 import { getWalletBalance, getBalanceByAddress } from "../balance.mjs";
 import { getChainConfig } from "../chain-config.mjs";
 import { parseUnits } from "viem";
@@ -75,7 +75,7 @@ export async function invoke(opts) {
   const config = loadConfig();
   const isOkx = config.mode === 'okx';
 
-  const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+  const serviceUrl = resolveServiceUrl(opts.serviceUrl);
   const privateKey = isOkx ? null : resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
   const { appId, model } = opts;
 

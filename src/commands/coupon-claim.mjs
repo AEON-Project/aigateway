@@ -31,7 +31,7 @@ import { checkCouponStatus, claimCoupon } from "../coupon.mjs";
 export async function couponClaim(opts) {
   const config = loadConfig();
   const { appId } = opts;
-  const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
+  const serviceUrl = resolveServiceUrl(opts.serviceUrl);
 
   if (!config.address) {
     emitErr("coupon-claim", "WALLET_NOT_CONFIGURED", {
