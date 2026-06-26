@@ -1,21 +1,11 @@
 /**
- * wallet-init: check / create the local session wallet and assess its on-chain status.
+ * wallet-init: check / create the local session wallet (X Layer / USDG).
  *
- * Steps:
- *   1. If ~/.aigateway/config.json has no privateKey → generate one with viem.generatePrivateKey().
- *   2. Query USDT / BNB balance (skipped when the wallet was just created — it must be empty).
- *   3. Query the facilitator allowance (same rule).
- *   4. Decide needsTopup with the reason and return the full readiness state for the agent to act on.
- *
- * Design intent: with a single wallet-init call, the agent gets every decision input it needs:
- *   - data.ready=true → the session private key is usable
- *   - data.needsTopup=true → wallet-topup must run first (the envelope includes presets / minTopup / reason)
- *   - data.needsTopup=false → can proceed directly to sb invoke
+ * EIP-3009: no approve step needed. needsTopup is based on USDG balance only.
  */
 import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
-import { getCombinedBalance, getAllowance, getBalanceByAddress } from "../balance.mjs";
+import { getCombinedBalance, getBalanceByAddress } from "../balance.mjs";
 import { walletStatus } from "../okx-wallet.mjs";
-import { checkCouponStatus } from "../coupon.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
   MIN_TOPUP_USDT,
@@ -27,85 +17,53 @@ export async function initWallet(opts) {
   const config = loadConfig();
   const { appId } = opts;
 
-  // ── OKX mode: no private key, query balance directly by stored address ────
+  // ── OKX mode ──────────────────────────────────────────────────────────────
   if (config.mode === 'okx') {
     if (!config.address) {
       emitOk("wallet-init", {
-        ready: false,
-        mode: 'okx',
-        needsTopup: true,
-        topupReason: 'okx_not_configured',
-        message: "OKX wallet not configured. Run: aigateway wallet-mode okx",
-        appId,
+        ready: false, mode: 'okx', needsTopup: true, topupReason: 'okx_not_configured',
+        message: "OKX wallet not configured. Run: aigateway wallet-mode okx", appId,
       }, { ready: false, mode: 'okx', appId });
       return;
     }
 
-    // Check OKX session validity (email OTP sessions can expire; API Key is stable)
+    // Check OKX session validity
     try {
       const status = await walletStatus();
       const loggedIn = status.loggedIn === true || status.data?.loggedIn === true;
       if (!loggedIn) {
         emitOk("wallet-init", {
-          ready: false,
-          mode: 'okx',
-          needsTopup: false,
-          topupReason: null,
-          okxSessionExpired: true,
-          address: config.address,
-          appId,
-          message: "OKX session expired. Re-authenticate: aigateway wallet-mode okx --email <your-okx-email>",
+          ready: false, mode: 'okx', needsTopup: false, topupReason: null,
+          okxSessionExpired: true, address: config.address, appId,
+          message: "OKX session expired. Re-authenticate: aigateway wallet-mode okx --email <email>",
         }, { ready: false, mode: 'okx', okxSessionExpired: true, appId });
         return;
       }
     } catch (e) {
-      // onchainos not available or transient error — still proceed with chain check
       logInfo(`OKX session check skipped: ${e.message}`);
     }
 
-    let usdt = "0", bnb = "0", allowance = 0n, chainCheckOk = true, chainCheckError = null;
-    let usdtNum = 0;
-    const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-
+    let usdt = "0", bnb = "0", usdtNum = 0, chainCheckOk = true, chainCheckError = null;
     try {
-      const bal = await getBalanceByAddress(config.address, { withToken: true });
-      usdt = bal.usdt;
-      bnb  = bal.bnb;
-      usdtNum = parseFloat(usdt);
-      allowance = await getAllowance(config.address);
+      const bal = await getBalanceByAddress(config.address);
+      usdt = bal.usdt; bnb = bal.bnb; usdtNum = parseFloat(usdt);
       logInfo(`OKX Wallet: ${config.address}`);
-      logInfo(`Balance: ${usdt} USDT, ${bnb} BNB`);
+      logInfo(`Balance: ${usdt} USDG, ${bnb} OKB`);
     } catch (e) {
-      chainCheckOk = false;
-      chainCheckError = e.message;
+      chainCheckOk = false; chainCheckError = e.message;
       logInfo(`Chain status check failed: ${e.message}`);
     }
 
-    let needsTopup = false;
-    let topupReason = null;
-    if (!chainCheckOk) {
-      needsTopup = true; topupReason = "chain_check_failed";
-    } else if (usdtNum < LOW_BALANCE_THRESHOLD) {
-      needsTopup = true; topupReason = "low_balance";
-    } else if (allowance === 0n) {
-      needsTopup = true; topupReason = "no_approve";
-    }
+    let needsTopup = false, topupReason = null;
+    if (!chainCheckOk)           { needsTopup = true; topupReason = "chain_check_failed"; }
+    else if (usdtNum < LOW_BALANCE_THRESHOLD) { needsTopup = true; topupReason = "low_balance"; }
 
-    const data = {
-      ready: true,
-      mode: 'okx',
-      appId,
-      address: config.address,
-      usdt,
-      bnb,
-      allowance: allowance.toString(),
-      needsTopup,
-      topupReason,
-      minTopup: MIN_TOPUP_USDT,
-      presets: TOPUP_PRESETS,
+    emitOk("wallet-init", {
+      ready: true, mode: 'okx', appId, address: config.address,
+      usdt, bnb, needsTopup, topupReason,
+      minTopup: MIN_TOPUP_USDT, presets: TOPUP_PRESETS,
       chainCheck: chainCheckOk ? "ok" : { error: chainCheckError },
-    };
-    emitOk("wallet-init", data, data);
+    }, { ready: true, mode: 'okx', appId });
     return;
   }
 
@@ -126,106 +84,37 @@ export async function initWallet(opts) {
     logInfo(`Wallet: ${config.address}`);
   }
 
-  // On-chain status check.
-  //   usdt = merged U total (USDT + campaign-reward token, when campaign active)
-  //   withdrawableUsdt = pure on-chain USDT only (the actual withdrawable amount)
-  //   campaignReward = activity reward portion (non-withdrawable; null when campaign inactive)
-  let usdt = "0";
-  let withdrawableUsdt = "0";
-  let campaignReward = null;
-  let bnb = "0";
-  let usdtNum = 0;
-  let allowance = 0n;
-  let chainCheckOk = true;
-  let chainCheckError = null;
-  let campaignActive = false;
+  let usdt = "0", bnb = "0", usdtNum = 0, chainCheckOk = true, chainCheckError = null;
 
-  if (created) {
-    // A freshly created wallet is guaranteed to be empty; skip the chain query to save ~500ms.
-    logInfo("Fresh wallet — skipping balance lookup (assumed empty).");
-  } else {
-    // Ask the server whether the campaign is active → decides if reward token counts toward U.
-    // (Campaign close takes effect server-side; no client re-deploy needed.)
-    const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-    if (serviceUrl) {
-      try {
-        let earlyDeviceId = "";
-        try { earlyDeviceId = getOrCreateDeviceId(); } catch { /* container/restricted env */ }
-        const st = await checkCouponStatus({
-          serviceUrl,
-          userAddress: config.address,
-          deviceId: earlyDeviceId || undefined,
-        });
-        campaignActive = st.ok && st.campaignActive === true;
-      } catch {
-        // Service unreachable → conservatively treat as campaign closed (USDT only).
-      }
-    }
-
+  if (!created) {
     try {
-      const bal = await getCombinedBalance(config.privateKey, { campaignActive });
-      usdt = bal.usdt;                        // merged U total (USDT + reward token when active)
-      withdrawableUsdt = bal.usdtOnly;        // pure on-chain USDT (the only withdrawable portion)
-      if (campaignActive) campaignReward = bal.token;
-      usdtNum = parseFloat(usdt);
-      bnb = bal.bnb;
-      logInfo(`Balance: ${usdt} U, ${bnb} BNB${campaignActive ? "  (incl. campaign reward)" : ""}`);
-      allowance = await getAllowance(config.address);
-      logInfo(`Allowance: ${allowance === 0n ? "0 (approve required)" : "already approved"}`);
+      const bal = await getCombinedBalance(config.privateKey);
+      usdt = bal.usdt; bnb = bal.bnb; usdtNum = parseFloat(usdt);
+      logInfo(`Balance: ${usdt} USDG, ${bnb} OKB`);
     } catch (e) {
-      chainCheckOk = false;
-      chainCheckError = e.message;
+      chainCheckOk = false; chainCheckError = e.message;
       logInfo(`Chain status check failed: ${e.message}`);
     }
+  } else {
+    logInfo("Fresh wallet — skipping balance lookup (assumed empty).");
   }
 
-  // Decision: needsTopup. Use only real on-chain state — do NOT depend on config.mainWallet.
-  // The previous logic `created || !config.mainWallet` was wrong: mainWallet is purely the default
-  // destination for withdraw. If USDT / allowance on-chain are sufficient — even when mainWallet
-  // is null (external CEX deposit / older versions that didn't record it) — paid calls should be
-  // allowed without forcing another wallet-topup round.
-  let needsTopup = false;
-  let topupReason = null;
-  if (created) {
-    // A freshly generated session key has no funds — no point querying the chain.
-    needsTopup = true;
-    topupReason = "first_time";
-  } else if (!chainCheckOk) {
-    // Chain probe failed — conservatively flag needsTopup so the user can decide what to do.
-    needsTopup = true;
-    topupReason = "chain_check_failed";
-  } else if (usdtNum < LOW_BALANCE_THRESHOLD) {
-    // usdtNum already reflects the merged U total (USDT + reward token from user's perspective).
-    needsTopup = true;
-    topupReason = "low_balance";
-  } else if (allowance === 0n) {
-    needsTopup = true;
-    topupReason = "no_approve";
-  }
+  let needsTopup = false, topupReason = null;
+  if (created)                    { needsTopup = true; topupReason = "first_time"; }
+  else if (!chainCheckOk)         { needsTopup = true; topupReason = "chain_check_failed"; }
+  else if (usdtNum < LOW_BALANCE_THRESHOLD) { needsTopup = true; topupReason = "low_balance"; }
 
-  // device id is minted on first init and reused by coupon-claim / audit downstream.
   const deviceId = getOrCreateDeviceId();
 
-  const data = {
-    ready: true,
-    created,
-    appId,
+  emitOk("wallet-init", {
+    ready: true, created, appId,
     mode: config.mode || null,
     address: config.address || null,
     deviceId,
     mainWallet: config.mainWallet || null,
     serviceUrl: config.serviceUrl || null,
-    usdt,                          // merged U total (USDT + campaign reward when active)
-    withdrawableUsdt,              // pure on-chain USDT — the only portion that can be withdrawn
-    campaignReward,                // activity reward U (non-withdrawable); null when campaign inactive
-    campaignActive,                // whether the reward portion currently counts toward U
-    bnb,
-    allowance: allowance.toString(),
-    needsTopup,
-    topupReason,            // "first_time" | "low_balance" | "no_approve" | "chain_check_failed" | null
-    minTopup: MIN_TOPUP_USDT,
-    presets: TOPUP_PRESETS,
+    usdt, bnb, needsTopup, topupReason,
+    minTopup: MIN_TOPUP_USDT, presets: TOPUP_PRESETS,
     chainCheck: chainCheckOk ? "ok" : { error: chainCheckError },
-  };
-  emitOk("wallet-init", data, data);
+  }, { ready: true, appId });
 }

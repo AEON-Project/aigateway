@@ -2,14 +2,11 @@ export const MIN_AMOUNT = 0.6;
 export const MAX_AMOUNT = 800;
 export const POLL_INTERVAL = 5000;
 export const MAX_POLLS = 42;
-export const BSC_RPC_URL = "https://few-boldest-spring.bsc.quiknode.pro/ec468d8a1ea2c310457b2e2f4eea257e62ba3b1e/";
-export const USDT_BSC = "0x55d398326f99059fF775485246999027B3197955";
+
+export const XLAYER_RPC_URL = "https://xlayerrpc.okx.com";
+export const USDG_XLAYER = "0x4ae46a509f6b1d9056937ba4500cb143933d2dc8";
 export const FACILITATOR_ADDRESS = "0x555e3311a9893c9B17444C1Ff0d88192a57Ef13e";
 
-/** AEON x BNB Chain AI Agent Campaign 优惠券代币 (BNA, BSC) */
-//   服务端 status 返回的 tokenAddress 仅作日志/审计参考, 实际 mint 落地合约以这里为准.
-//   历史地址 0x2c9E7Ff908Abde7Ca6dfA0BFF296d8982Ae7Ad4b 是旧代理, 链上 mint 不到这个合约.
-export const CAMPAIGN_TOKEN_ADDRESS = "0x76671cd1e9d07527a25632ce88151480e529263b";
 export const DEFAULT_WC_PROJECT_ID = "1c5e29cd4b466f52393cd39d05ec265c";
 export const WC_CONNECT_TIMEOUT_MS = 5 * 60 * 1000;
 

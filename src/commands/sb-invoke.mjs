@@ -15,9 +15,8 @@ import { readFileSync, existsSync } from "node:fs";
 import axios from "axios";
 import { createX402Api, createOkxX402Api, decodePaymentResponse, fetchPaymentRequirements, selectAcceptByBalance } from "../x402.mjs";
 import { resolve, loadConfig, getOrCreateDeviceId } from "../config.mjs";
-import { getWalletBalance, getAllowance, getBalanceByAddress } from "../balance.mjs";
-import { USDT_BSC } from "../constants.mjs";
-import { checkCouponStatus } from "../coupon.mjs";
+import { getWalletBalance, getBalanceByAddress } from "../balance.mjs";
+import { USDG_XLAYER } from "../constants.mjs";
 import { parseUnits } from "viem";
 import {
   fundSessionKey,
@@ -30,7 +29,6 @@ import { emitOk, emitErr, logInfo } from "../output.mjs";
 import { extractOutputs, resolveOutputDir, downloadOutputs } from "../tools-download.mjs";
 import { fetchCatalog, findModel } from "../catalog.mjs";
 import { validateInputs } from "../inputs-validator.mjs";
-import { CAMPAIGN_TOKEN_ADDRESS } from "../constants.mjs";
 
 /**
  * Parse `--inputs` value: either a JSON literal or `@path/to/file.json`.
@@ -187,88 +185,46 @@ export async function invoke(opts) {
     };
   }
 
-  // Balance / allowance / funding decision
-  //   先查余额, 再用 selectAcceptByBalance 决定币种 — 服务端返回 USDT + BNA 两种 accept
-  //   时, 优先扣 BNA (CAMPAIGN_TOKEN_ADDRESS), 余额不足回退到 USDT.
+  // Balance / funding decision (X Layer / USDG / EIP-3009 — no approve needed)
   logInfo("Checking wallet...");
   let needTopup = false;
-  let needGas = false;
   let sessionAddress;
   let topupAmount = null;
-  let balanceInitialUsdt = null;      // unified U (= USDT + BNA when campaignActive, USDT only otherwise)
+  let balanceInitialUsdt = null;
   let balanceBeforeChargeUsdt = null;
-  let campaignActive = false;
   let paymentReq;
   let requiredUsdt;
-  let paymentMethod = "USDT"; // "USDT" | "COUPON" — internal diagnostic
 
   try {
     const bal = isOkx
-      ? await getBalanceByAddress(config.address, { withToken: true })
-      : await getWalletBalance(privateKey, { withToken: true });
-    const { address, usdt, bnb, bnbRaw, token, tokenRaw, usdtRaw } = bal;
+      ? await getBalanceByAddress(config.address)
+      : await getWalletBalance(privateKey);
+    const { address, usdt, bnb, usdtRaw } = bal;
     sessionAddress = isOkx ? config.address : address;
-    // 拿到 address 后查 status (顺便缓存 campaignActive 用于 envelope 余额合并)
-    const status = await checkCouponStatus({
-      serviceUrl,
-      userAddress: address,
-      deviceId: deviceId || undefined,
-    }).catch(() => ({ ok: false }));
-    campaignActive = status.ok && status.campaignActive === true;
-    const combinedU = campaignActive
-      ? (parseFloat(usdt) + parseFloat(token || "0")).toString()
-      : usdt;
-    balanceInitialUsdt = combinedU;
-    balanceBeforeChargeUsdt = combinedU;
+    balanceInitialUsdt = usdt;
+    balanceBeforeChargeUsdt = usdt;
 
     logInfo(`Wallet: ${address}`);
-    logInfo(`Balance: ${combinedU} U${campaignActive ? "  (incl. activity reward)" : ""}, ${bnb} BNB`);
+    logInfo(`Balance: ${usdt} USDG, ${bnb} OKB`);
 
-    // Pick payment asset by balance + campaign status (campaign closed → force USDT).
+    // X Layer: single accept (USDG). Pick the first affordable accept.
     const selection = selectAcceptByBalance(
       paymentReqEnvelope.accepts,
-      { usdt: usdtRaw, token: tokenRaw || 0n },
-      { preferredAsset: CAMPAIGN_TOKEN_ADDRESS, fallbackAsset: USDT_BSC, campaignActive },
+      { usdt: usdtRaw, token: 0n },
+      { preferredAsset: USDG_XLAYER, fallbackAsset: USDG_XLAYER, campaignActive: false },
     );
-    // selectAcceptByBalance guarantees the chosen accept is affordable, or returns chosen=null
-    // with a diagnostic. Handle null up front — never let a doomed authorization get signed.
     let chosenAccept = selection.chosen;
     if (!chosenAccept) {
-      const diag = selection.diagnostic || {};
-      // Reward-asset insufficient and no USDT fallback in accepts → user can't recover via top-up
-      // (top-up doesn't mint reward token), surface INSUFFICIENT_TOKEN with a retry hint.
-      if (diag.kind === "preferred") {
+      const usdgAccept = paymentReqEnvelope.accepts.find(
+        (a) => String(a.asset).toLowerCase() === USDG_XLAYER.toLowerCase(),
+      ) || paymentReqEnvelope.accepts[0];
+      if (!usdgAccept) {
         return {
-          ok: false,
-          code: "INSUFFICIENT_TOKEN",
-          details: {
-            message: "Activity reward balance is insufficient and the server did not offer a USDT fallback for this call.",
-            required: diag.requiredWei,
-            available: diag.availableWei,
-            asset: diag.asset,
-            address: sessionAddress,
-            appId,
-            hint: "Retry the call — the server will normally include a USDT option when reward balance is low.",
-          },
+          ok: false, code: "INVALID_BODY",
+          details: { message: "Server returned 402 accepts with no recognized asset.", accepts: paymentReqEnvelope.accepts, appId },
         };
       }
-      // USDT path is in accepts but balance is short → let the existing needTopup logic handle it.
-      const usdtAccept = paymentReqEnvelope.accepts.find(
-        (a) => String(a.asset).toLowerCase() === USDT_BSC.toLowerCase(),
-      );
-      if (!usdtAccept) {
-        return {
-          ok: false,
-          code: "INVALID_BODY",
-          details: {
-            message: "Server returned 402 accepts in an unsupported shape (no preferred or fallback asset).",
-            accepts: paymentReqEnvelope.accepts,
-            appId,
-          },
-        };
-      }
-      chosenAccept = usdtAccept;
-      logInfo("Reward asset unavailable / unaffordable; routing through USDT (will trigger top-up if balance is short).");
+      chosenAccept = usdgAccept;
     }
     paymentReq = {
       ...paymentReqEnvelope,
@@ -277,99 +233,48 @@ export async function invoke(opts) {
       decimals: chosenAccept.decimals,
       asset: chosenAccept.asset,
       payTo: chosenAccept.payTo,
-      chosenRawAccept: chosenAccept.raw,   // pass-through to signing step (line ~427) to override x402 lib's default accepts[0] pick
+      chosenRawAccept: chosenAccept.raw,
     };
     requiredUsdt = paymentReq.amountUsdt;
-    paymentMethod = String(paymentReq.asset).toLowerCase() === CAMPAIGN_TOKEN_ADDRESS.toLowerCase() ? "COUPON" : "USDT";
-    if (paymentMethod === "COUPON") {
-      logInfo(`💳 Pay with activity reward: ${requiredUsdt} (chose ${selection.reason}, asset ${paymentReq.asset})`);
-    } else {
-      logInfo(`Pay with USDT: ${requiredUsdt} (chose ${selection.reason}, pay to ${paymentReq.payTo})`);
-    }
+    logInfo(`Pay with USDG: ${requiredUsdt} (pay to ${paymentReq.payTo})`);
 
     const usdtNum = parseFloat(usdt);
-    const tokenNum = parseFloat(token || "0");
-
-    const allowance = await getAllowance(address);
     const requiredWei = BigInt(paymentReq.amountWei);
     if (requiredWei === 0n) {
       return {
-        ok: false,
-        code: "INVALID_PAYMENT_AMOUNT",
+        ok: false, code: "INVALID_PAYMENT_AMOUNT",
         details: { message: "Server returned invalid payment amount (0). Please retry later.", appId },
       };
     }
-    // 优惠券 (COUPON) 走 token, 服务端代理合约通常已 approve, 这里只检查余额.
-    // 普通 USDT 走法不变.
-    if (paymentMethod === "COUPON") {
-      logInfo(`Payment asset: activity reward (${paymentReq.asset})`);
-      if (tokenNum < requiredUsdt) {
-        // 理论不会发生 (上面 selectAcceptByBalance 已经看过余额); 防御性兜底
-        return {
-          ok: false,
-          code: "INSUFFICIENT_TOKEN",
-          details: {
-            message: `Activity reward balance ${token} is insufficient for required ${requiredUsdt}.`,
-            required: requiredUsdt,
-            available: token,
-            address,
-            appId,
-          },
-        };
-      }
-      logInfo(`Activity reward balance sufficient (${token} ≥ ${requiredUsdt}).`);
-    } else if (allowance >= requiredWei) {
-      logInfo("Allowance sufficient, no approve needed.");
-    } else {
-      logInfo(`Allowance ${allowance} < required ${requiredWei}; approve needed.`);
-      // OKX mode: gas is handled by OKX internally — no BNB transfer needed.
-      if (!isOkx && bnbRaw === 0n) {
-        needGas = true;
-        logInfo("No BNB for approve gas, will request BNB transfer.");
-      }
-    }
 
-    if (paymentMethod !== "COUPON" && usdtNum < requiredUsdt) {
+    // EIP-3009: no allowance check needed
+    if (usdtNum < requiredUsdt) {
       needTopup = true;
       const shortfall = requiredUsdt - usdtNum;
       const minTopup = Math.max(MIN_TOPUP_USDT, Math.ceil(shortfall));
-      logInfo(`USDT insufficient: have ${usdtNum}, need ${requiredUsdt}, shortfall ${shortfall.toFixed(6)} (top-up minimum: ${minTopup} USDT)`);
+      logInfo(`USDG insufficient: have ${usdtNum}, need ${requiredUsdt}, shortfall ${shortfall.toFixed(6)}`);
 
       if (opts.topupAmount != null && String(opts.topupAmount).trim() !== "") {
         const amt = Number(opts.topupAmount);
         if (!Number.isFinite(amt) || amt <= 0) {
-          return {
-            ok: false,
-            code: "AMOUNT_INVALID",
-            details: { message: `Invalid --topup-amount: ${opts.topupAmount}`, appId },
-          };
+          return { ok: false, code: "AMOUNT_INVALID", details: { message: `Invalid --topup-amount: ${opts.topupAmount}`, appId } };
         }
         if (amt < minTopup) {
-          return {
-            ok: false,
-            code: "TOPUP_AMOUNT_TOO_SMALL",
-            details: { message: `--topup-amount ${amt} USDT is below the ${minTopup} USDT minimum for this call.`, minTopup, appId },
-          };
+          return { ok: false, code: "TOPUP_AMOUNT_TOO_SMALL", details: { message: `--topup-amount ${amt} USDG is below the ${minTopup} USDG minimum.`, minTopup, appId } };
         }
         topupAmount = String(opts.topupAmount);
-        logInfo(`Using --topup-amount: ${topupAmount} USDT`);
       } else if (process.stdin.isTTY) {
         topupAmount = await promptTopupAmount(minTopup);
-        logInfo(`Selected top-up amount: ${topupAmount} USDT`);
+        logInfo(`Selected top-up amount: ${topupAmount} USDG`);
       } else {
-        const presets = TOPUP_PRESETS.filter((v) => v >= minTopup);
         return {
-          ok: false,
-          code: "TOPUP_REQUIRED",
+          ok: false, code: "TOPUP_REQUIRED",
           details: {
-            message: `USDT balance is below the ${minTopup} USDT minimum for this call. Choose a top-up amount and rerun with --topup-amount <usdt>.`,
-            minTopup,
-            required: requiredUsdt,
-            currentBalance: balanceInitialUsdt,
-            address: sessionAddress,
-            appId,
-            presets,
-            hint: `Rerun: aigateway wallet-topup --amount <usdt> --app-id ${appId}`,
+            message: `USDG balance is below the ${minTopup} USDG minimum. Rerun with --topup-amount <usdg>.`,
+            minTopup, required: requiredUsdt, currentBalance: balanceInitialUsdt,
+            address: sessionAddress, appId,
+            presets: TOPUP_PRESETS.filter((v) => v >= minTopup),
+            hint: `Rerun: aigateway wallet-topup --amount <usdg> --app-id ${appId}`,
           },
         };
       }
@@ -382,27 +287,20 @@ export async function invoke(opts) {
     };
   }
 
-  if (needTopup || needGas) {
+  if (needTopup) {
     if (isOkx) {
       return {
-        ok: false,
-        code: "INSUFFICIENT_USDT",
+        ok: false, code: "INSUFFICIENT_USDT",
         details: {
-          message: `Insufficient USDT. Please send at least ${topupAmount} USDT (BSC BEP-20) to your OKX wallet.`,
-          address: config.address,
-          shortfall: topupAmount,
-          hint: `Run: aigateway wallet-topup  to see deposit instructions.`,
-          appId,
+          message: `Insufficient USDG. Please send at least ${topupAmount} USDG to your OKX wallet on X Layer.`,
+          address: config.address, shortfall: topupAmount,
+          hint: `Run: aigateway wallet-topup to see deposit instructions.`, appId,
         },
       };
     }
     logInfo("Funding flow triggered...");
     try {
-      await fundSessionKey({
-        sessionAddress,
-        usdtAmount: needTopup ? topupAmount : null,
-        needGas,
-      });
+      await fundSessionKey({ sessionAddress, usdtAmount: topupAmount });
     } catch (e) {
       if (e instanceof WalletConnectError) {
         return { ok: false, code: e.code, details: { message: e.message, address: sessionAddress, appId } };
@@ -412,23 +310,14 @@ export async function invoke(opts) {
 
     logInfo("Re-checking wallet balance...");
     try {
-      const { usdt, bnbRaw, token } = await getWalletBalance(privateKey, { withToken: true });
-      balanceBeforeChargeUsdt = campaignActive
-        ? (parseFloat(usdt) + parseFloat(token || "0")).toString()
-        : usdt;
-      const usdtNum = parseFloat(usdt);
-      if (needGas && bnbRaw === 0n) {
+      const recheck = isOkx
+        ? await getBalanceByAddress(config.address)
+        : await getWalletBalance(privateKey);
+      balanceBeforeChargeUsdt = recheck.usdt;
+      if (parseFloat(recheck.usdt) < requiredUsdt) {
         return {
-          ok: false,
-          code: "INSUFFICIENT_BNB",
-          details: { message: "No BNB for approve transaction after funding. Run 'aigateway wallet-gas' to add BNB manually.", address: sessionAddress, appId },
-        };
-      }
-      if (usdtNum < requiredUsdt) {
-        return {
-          ok: false,
-          code: "INSUFFICIENT_USDT",
-          details: { message: "Still insufficient USDT after funding.", required: `${requiredUsdt} USDT`, available: `${usdt} USDT`, address: sessionAddress, appId },
+          ok: false, code: "INSUFFICIENT_USDT",
+          details: { message: "Still insufficient USDG after funding.", required: `${requiredUsdt} USDG`, available: `${recheck.usdt} USDG`, address: sessionAddress, appId },
         };
       }
     } catch (e) {
@@ -500,15 +389,13 @@ export async function invoke(opts) {
     }
   }
 
-  // Post-payment balance probe (合并 USDT + BNA, 对外只暴露统一 U)
+  // Post-payment balance probe
   let balanceAfterUsdt = null;
   try {
     const after = isOkx
-      ? await getBalanceByAddress(config.address, { withToken: campaignActive })
-      : await getWalletBalance(privateKey, { withToken: true });
-    balanceAfterUsdt = campaignActive
-      ? (parseFloat(after.usdt) + parseFloat(after.token || "0")).toString()
-      : after.usdt;
+      ? await getBalanceByAddress(config.address)
+      : await getWalletBalance(privateKey);
+    balanceAfterUsdt = after.usdt;
   } catch (e) {
     logInfo(`Post-payment balance check failed: ${e.message}`);
   }
@@ -523,7 +410,7 @@ export async function invoke(opts) {
       // unwrap server envelope: { payer, transaction, data: <upstream-response> } → <upstream-response>
       raw: response.data?.data ?? response.data,
       paymentResponse,
-      paymentMethod,           // "USDT" | "COUPON" — internal diagnostic; users see unified U (token == USDT 1:1)
+      paymentMethod: "USDG",
       balance: {
         initial: balanceInitialUsdt,    // U total before invocation
         before: balanceBeforeChargeUsdt, // U total before charge (after topup)

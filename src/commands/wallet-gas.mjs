@@ -10,7 +10,7 @@ import {
   setStatus,
   WalletConnectError,
 } from "../walletconnect.mjs";
-import { BSC_RPC_URL } from "../constants.mjs";
+import { XLAYER_RPC_URL } from "../constants.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 const DEFAULT_GAS_AMOUNT = "0.001";
@@ -42,10 +42,10 @@ export async function gas(opts) {
   try {
     await withWallet({ amount, token: "BNB" }, async ({ signClient, session, peerAddress }) => {
       const { createPublicClient, http } = await import("viem");
-      const { bsc } = await import("viem/chains");
+      const { xLayer } = await import("viem/chains");
       const publicClient = createPublicClient({
-        chain: bsc,
-        transport: http(BSC_RPC_URL, { timeout: 15000, retryCount: 2 }),
+        chain: xLayer,
+        transport: http(XLAYER_RPC_URL, { timeout: 15000, retryCount: 2 }),
       });
 
       setStatus("signing", { amount, token: "BNB", to: sessionAddress });

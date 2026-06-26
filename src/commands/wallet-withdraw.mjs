@@ -6,13 +6,13 @@
  */
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, encodeFunctionData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { bsc } from "viem/chains";
+import { xLayer } from "viem/chains";
 import { createInterface } from "node:readline/promises";
 import { loadConfig, resolve, getOrCreateDeviceId } from "../config.mjs";
 import { walletSendWithOkx } from "../okx-wallet.mjs";
 import { getBalanceByAddress } from "../balance.mjs";
 import { checkCouponStatus } from "../coupon.mjs";
-import { BSC_RPC_URL, USDT_BSC, ERC20_TRANSFER_ABI } from "../constants.mjs";
+import { XLAYER_RPC_URL, USDG_XLAYER, ERC20_TRANSFER_ABI } from "../constants.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 const BNB_TRANSFER_GAS = 21000n;
@@ -106,7 +106,7 @@ export async function withdraw(opts) {
       const txHash = await walletSendWithOkx({
         recipient: mainWallet,
         amount,
-        tokenAddress: USDT_BSC,
+        tokenAddress: USDG_XLAYER,
       });
       emitOk("wallet-withdraw", { mode: 'okx', appId, txHash, to: mainWallet, amount }, { mode: 'okx', txHash, to: mainWallet, amount });
     } catch (err) {
@@ -135,14 +135,14 @@ export async function withdraw(opts) {
   const account = privateKeyToAccount(config.privateKey);
 
   const publicClient = createPublicClient({
-    chain: bsc,
-    transport: http(BSC_RPC_URL, { timeout: 15000, retryCount: 2 }),
+    chain: xLayer,
+    transport: http(XLAYER_RPC_URL, { timeout: 15000, retryCount: 2 }),
   });
 
   const walletClient = createWalletClient({
     account,
-    chain: bsc,
-    transport: http(BSC_RPC_URL),
+    chain: xLayer,
+    transport: http(XLAYER_RPC_URL),
   });
 
   // Ask the server whether the campaign is active → decides whether we query / display BNA.
@@ -270,7 +270,7 @@ export async function withdraw(opts) {
         args: [mainWallet, amountRaw],
       });
       logInfo(`\nTransferring ${formatUnits(amountRaw, 18)} USDT → ${mainWallet}...`);
-      txHash = await walletClient.sendTransaction({ to: USDT_BSC, data });
+      txHash = await walletClient.sendTransaction({ to: USDG_XLAYER, data });
       logInfo(`USDT tx: ${txHash}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
       if (receipt.status !== "success") throw new Error("USDT transfer reverted");

@@ -132,7 +132,7 @@ export async function signEIP712WithOkx(address, typedData) {
   );
   const result = await run([
     'wallet', 'sign-message',
-    '--chain', 'bsc',
+    '--chain', 'xlayer',
     '--type',  'eip712',
     '--message', messageJson,
     '--from',  address,
@@ -150,7 +150,7 @@ export async function contractCallWithOkx(address, { to, data }) {
   const result = await run([
     'wallet', 'contract-call',
     '--to',         to,
-    '--chain',      'bsc',
+    '--chain',      'xlayer',
     '--input-data', data,
     '--from',       address,
     '--force',
@@ -187,7 +187,7 @@ export async function walletSendWithOkx({ recipient, amount, tokenAddress }) {
     'wallet', 'send',
     '--readable-amount', String(amount),
     '--recipient',      recipient,
-    '--chain',          'bsc',
+    '--chain',          'xlayer',
     '--force',
   ];
   if (tokenAddress) args.push('--contract-token', tokenAddress);

@@ -88,7 +88,7 @@ export function stopStatusServer() {
   }
 }
 
-const BSC_CHAIN_ID = "eip155:56";
+const XLAYER_CHAIN_ID = "eip155:196";
 
 // QR-page countdown (matches the WalletConnect connection timeout)
 const QR_EXPIRE_MS = 5 * 60 * 1000;
@@ -558,7 +558,7 @@ export async function connectWallet(signClient, statusPort, amount = null, token
     optionalNamespaces: {
       eip155: {
         methods: ["eth_sendTransaction"],
-        chains: [BSC_CHAIN_ID],
+        chains: [XLAYER_CHAIN_ID],
         events: ["chainChanged", "accountsChanged"],
       },
     },
@@ -607,7 +607,7 @@ export async function requestERC20Transfer(signClient, session, { from, to, toke
   const txHash = await Promise.race([
     signClient.request({
       topic: session.topic,
-      chainId: BSC_CHAIN_ID,
+      chainId: XLAYER_CHAIN_ID,
       request: {
         method: "eth_sendTransaction",
         params: [
@@ -642,7 +642,7 @@ export async function requestNativeTransfer(signClient, session, { from, to, val
   const txHash = await Promise.race([
     signClient.request({
       topic: session.topic,
-      chainId: BSC_CHAIN_ID,
+      chainId: XLAYER_CHAIN_ID,
       request: {
         method: "eth_sendTransaction",
         params: [
