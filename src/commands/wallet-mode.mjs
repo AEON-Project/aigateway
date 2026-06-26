@@ -52,22 +52,28 @@ export async function setWalletMode(mode, opts = {}) {
 
   const config = loadConfig();
 
-  // Already configured: verify session is still alive, skip re-auth if it is
-  if (config.mode === 'okx' && config.address) {
-    try {
-      const status = await walletStatus();
-      const loggedIn = status.loggedIn === true || status.data?.loggedIn === true;
-      if (loggedIn) {
-        logInfo(`OKX wallet already configured (${config.address}) and session is active.`);
-        emitOk('wallet-mode',
-          { mode: 'okx', address: config.address, alreadyConfigured: true },
-          { mode: 'okx', address: config.address, alreadyConfigured: true });
-        return;
-      }
-      logInfo('OKX session expired — re-authenticating...');
-    } catch {
-      // onchainos unavailable, proceed to re-auth
+  // Check if onchainos session is already alive — regardless of current config.mode.
+  // This covers the common case of switching session-key ↔ okx repeatedly:
+  // the user authenticated once, switched away, and now switches back.
+  try {
+    const status = await walletStatus();
+    const loggedIn = status.loggedIn === true || status.data?.loggedIn === true;
+    if (loggedIn) {
+      const address = config.address && config.mode === 'okx'
+        ? config.address        // reuse cached address
+        : await getOkxEvmAddress(); // re-fetch (mode was session-key, address might be stale)
+      logInfo(`OKX session is active — address: ${address}`);
+      config.mode    = 'okx';
+      config.address = address;
+      saveConfig(config);
+      emitOk('wallet-mode',
+        { mode: 'okx', address, alreadyConfigured: true },
+        { mode: 'okx', address, alreadyConfigured: true });
+      return;
     }
+    logInfo('OKX session expired — re-authenticating...');
+  } catch {
+    // onchainos unavailable or not logged in, proceed to auth flow
   }
 
   // Path A: API Key already in env or config
