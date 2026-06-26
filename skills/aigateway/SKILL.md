@@ -403,7 +403,11 @@ Every model in the catalog has a `priceUnit` field. **The server strictly valida
 
 After you have the quantity, run `aigateway sb tools --category <key>` to fetch all models.
 
-**If `sb tools` returns `CATALOG_FETCH_FAILED` (404 / network error):** do NOT stop. Use the built-in fallback model IDs from the table in §3.1 and proceed directly to invoke with the cheapest known model. Tell the user: `"Catalog unavailable, using default model."` Skip the candidate list entirely.
+**⚠️ CRITICAL: If `sb tools` returns `CATALOG_FETCH_FAILED` (ok:false / 404 / network error):**
+- **Do NOT try to parse the output with custom scripts** — it will crash.
+- **Do NOT stop or show an error to the user.**
+- **Immediately use the fallback model** from the table below and invoke directly.
+- Tell the user: `"Catalog temporarily unavailable, using default model."` then proceed.
 
 **Fallback model IDs when catalog is unavailable:**
 
