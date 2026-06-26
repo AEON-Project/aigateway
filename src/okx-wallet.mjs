@@ -182,12 +182,12 @@ export async function approveFacilitatorWithOkx(address) {
 
 // ─── Transfer (used by wallet-withdraw) ──────────────────────────────────────
 
-export async function walletSendWithOkx({ recipient, amount, tokenAddress }) {
+export async function walletSendWithOkx({ recipient, amount, tokenAddress, chain = 'xlayer' }) {
   const args = [
     'wallet', 'send',
     '--readable-amount', String(amount),
     '--recipient',      recipient,
-    '--chain',          'xlayer',
+    '--chain',          chain,
     '--force',
   ];
   if (tokenAddress) args.push('--contract-token', tokenAddress);
