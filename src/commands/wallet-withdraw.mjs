@@ -135,13 +135,13 @@ export async function withdraw(opts) {
 
   const publicClient = createPublicClient({
     chain: xLayer,
-    transport: http(XLAYER_RPC_URL, { timeout: 15000, retryCount: 2 }),
+    transport: http(cfg.rpcUrl, { timeout: 15000, retryCount: 2 }),
   });
 
   const walletClient = createWalletClient({
     account,
     chain: xLayer,
-    transport: http(XLAYER_RPC_URL),
+    transport: http(cfg.rpcUrl),
   });
 
   const balance = await getBalanceByAddress(sessionAddress);
