@@ -6,6 +6,7 @@
 import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
 import { getCombinedBalance, getBalanceByAddress, getAllowance } from "../balance.mjs";
 import { walletStatus } from "../okx-wallet.mjs";
+import { getChainConfig } from "../chain-config.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
   MIN_TOPUP_USDT,
@@ -16,6 +17,7 @@ import { emitOk, logInfo } from "../output.mjs";
 export async function initWallet(opts) {
   const config = loadConfig();
   const { appId } = opts;
+  const cfg = getChainConfig();
 
   // ── OKX mode ──────────────────────────────────────────────────────────────
   if (config.mode === 'okx') {
@@ -34,7 +36,7 @@ export async function initWallet(opts) {
       if (!loggedIn) {
         emitOk("wallet-init", {
           ready: false, mode: 'okx', needsTopup: false, topupReason: null,
-          okxSessionExpired: true, address: config.address, appId,
+          tokenSymbol: cfg.tokenSymbol, okxSessionExpired: true, address: config.address, appId,
           message: "OKX session expired. Re-authenticate: aigateway wallet-mode okx --email <email>",
         }, { ready: false, mode: 'okx', okxSessionExpired: true, appId });
         return;
@@ -61,6 +63,7 @@ export async function initWallet(opts) {
     emitOk("wallet-init", {
       ready: true, mode: 'okx', appId, address: config.address,
       usdt, bnb, needsTopup, topupReason,
+      tokenSymbol: cfg.tokenSymbol, nativeSymbol: cfg.nativeSymbol,
       minTopup: MIN_TOPUP_USDT, presets: TOPUP_PRESETS,
       chainCheck: chainCheckOk ? "ok" : { error: chainCheckError },
     }, { ready: true, mode: 'okx', appId });
@@ -118,6 +121,7 @@ export async function initWallet(opts) {
     mainWallet: config.mainWallet || null,
     serviceUrl: config.serviceUrl || null,
     usdt, bnb, needsTopup, topupReason,
+    tokenSymbol: cfg.tokenSymbol, nativeSymbol: cfg.nativeSymbol,
     minTopup: MIN_TOPUP_USDT, presets: TOPUP_PRESETS,
     chainCheck: chainCheckOk ? "ok" : { error: chainCheckError },
   }, { ready: true, appId });

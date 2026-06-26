@@ -244,8 +244,10 @@ When done, re-run `aigateway wallet-init`.
   "address": "0x...",
   "deviceId": "uuid...",
   "mainWallet": "0x..." | null,
-  "usdt": "6.0",       // USDG balance on X Layer
-  "bnb": "0.04",       // OKB balance (native gas token on X Layer)
+  "usdt": "6.0",       // payment token balance (USDT on BSC / USDG on X Layer)
+  "bnb": "0.04",       // native gas token (BNB on BSC / OKB on X Layer); absent in OKX mode
+  "tokenSymbol": "USDT",  // "USDT" (session-key/BSC) or "USDG" (okx/X Layer) — USE THIS for display
+  "nativeSymbol": "BNB",  // "BNB" or "OKB"
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "chain_check_failed",
   "minTopup": 6,
@@ -253,7 +255,7 @@ When done, re-run `aigateway wallet-init`.
 }
 ```
 
-**User-facing rendering**: Show USDG balance as the spendable amount. OKB is only relevant for session-key mode withdrawals. No campaign/coupon on X Layer.
+**User-facing rendering**: Always use `tokenSymbol` from the envelope for the currency label — never hardcode "USDT" or "USDG". Example: `"${usdt} ${tokenSymbol}"`. In OKX mode `bnb`/`nativeSymbol` is absent; do not show gas balance.
 
 ### Decision tree
 
@@ -262,7 +264,7 @@ When done, re-run `aigateway wallet-init`.
 | `mode: "okx"`, `okxSessionExpired: true` | OKX session expired — guide user to re-authenticate (see below) |
 | `mode: "okx"`, `topupReason: "okx_not_configured"` | OKX wallet not set up yet. Guide user to run `wallet-mode okx` (see OKX setup below) |
 | `created: true` | Output "Auto-creating your dedicated wallet..." + "{addr first 3}...{last 4} Ready." |
-| `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready. ({usdt} USDG)" |
+| `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready. ({usdt} {tokenSymbol})" |
 | **`needsTopup: true`** | **Jump immediately to Phase 2.** Use `presets` / `minTopup` from the envelope |
 | `needsTopup: false` | Wallet ready, continue to Phase 3 |
 
@@ -334,7 +336,7 @@ First output line (**verbatim**):
 }
 ```
 
-Output: `✅ Topped up ${topup.amount} USDG, current balance ${usdt} USDG`
+Output: `✅ Topped up ${topup.amount} ${tokenSymbol}, current balance ${usdt} ${tokenSymbol}`
 
 ### Error situations
 
