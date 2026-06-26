@@ -4,7 +4,7 @@
  */
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, encodeFunctionData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { xLayer } from "viem/chains";
+
 import { createInterface } from "node:readline/promises";
 import { loadConfig, resolve } from "../config.mjs";
 import { walletSendWithOkx } from "../okx-wallet.mjs";
@@ -105,7 +105,7 @@ export async function withdraw(opts) {
       const txHash = await walletSendWithOkx({
         recipient: mainWallet,
         amount,
-        tokenAddress: USDG_XLAYER,
+        tokenAddress: cfg.token,
       });
       emitOk("wallet-withdraw", { mode: 'okx', appId, txHash, to: mainWallet, amount }, { mode: 'okx', txHash, to: mainWallet, amount });
     } catch (err) {
@@ -134,13 +134,13 @@ export async function withdraw(opts) {
   const account = privateKeyToAccount(config.privateKey);
 
   const publicClient = createPublicClient({
-    chain: xLayer,
+    chain: cfg.chain,
     transport: http(cfg.rpcUrl, { timeout: 15000, retryCount: 2 }),
   });
 
   const walletClient = createWalletClient({
     account,
-    chain: xLayer,
+    chain: cfg.chain,
     transport: http(cfg.rpcUrl),
   });
 
