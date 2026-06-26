@@ -18,8 +18,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const _loadDataUrl = (name) =>
   "data:image/png;base64," + readFileSync(join(__dirname, "assets", name)).toString("base64");
 const COUPON_BADGE_DATA_URL = _loadDataUrl("coupon-badge.png");
-const USDT_ICON_DATA_URL = _loadDataUrl("usdt.png");
-const BNB_ICON_DATA_URL = _loadDataUrl("bnb.png");
+const USDT_ICON_DATA_URL   = _loadDataUrl("usdt.png");
+const BNB_ICON_DATA_URL    = _loadDataUrl("bnb.png");
+const USDG_ICON_DATA_URL   = _loadDataUrl("usdg.png");
+const XLAYER_ICON_DATA_URL = _loadDataUrl("xlayer.png");
 
 // SF Pro Display 字体 (5 个权重, woff2, 内联避免 file:// 加载延迟)
 const _loadFontB64 = (file) =>
@@ -196,8 +198,10 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "X L
   const ORIGINAL_AMOUNT = ${JSON.stringify(originalAmount || null)};
   const COUPON_AMOUNT = ${JSON.stringify(couponAmount || 0)};
   const COUPON_BADGE_URL = ${JSON.stringify(COUPON_BADGE_DATA_URL)};
-  const USDT_ICON_URL = ${JSON.stringify(USDT_ICON_DATA_URL)};
-  const BNB_ICON_URL = ${JSON.stringify(BNB_ICON_DATA_URL)};
+  const USDT_ICON_URL   = ${JSON.stringify(USDT_ICON_DATA_URL)};
+  const BNB_ICON_URL    = ${JSON.stringify(BNB_ICON_DATA_URL)};
+  const USDG_ICON_URL   = ${JSON.stringify(USDG_ICON_DATA_URL)};
+  const XLAYER_ICON_URL = ${JSON.stringify(XLAYER_ICON_DATA_URL)};
   const TOKEN = ${JSON.stringify(token)};
   const NETWORK = ${JSON.stringify(network)};
   const GAS_AMOUNT = ${JSON.stringify(gasAmount || null)};
@@ -305,13 +309,11 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "X L
     const dashOffset = -PL * (1 - progress);
 
     // Token icons
-    const USDT_ICON = '<img class="usdt-icon" src="' + USDT_ICON_URL + '" alt="USDT">';
-    const BNB_ICON  = '<img class="usdt-icon" src="' + BNB_ICON_URL  + '" alt="BNB">';
-    // USDG — Paxos Global Dollar (teal circle with G$)
-    const USDG_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#0D9B8A"/><text x="9" y="13" text-anchor="middle" font-size="8" font-weight="700" font-family="Arial,sans-serif" fill="#fff">G$</text></svg>';
-    // X Layer network icon (dark circle with X)
-    const XLAYER_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#111"/><text x="9" y="13.5" text-anchor="middle" font-size="11" font-weight="800" font-family="Arial,sans-serif" fill="#fff">X</text></svg>';
-    const TOKEN_ICON = TOKEN === 'BNB' ? BNB_ICON : TOKEN === 'USDG' ? USDG_ICON : USDT_ICON;
+    const USDT_ICON   = '<img class="usdt-icon" src="' + USDT_ICON_URL   + '" alt="USDT">';
+    const BNB_ICON    = '<img class="usdt-icon" src="' + BNB_ICON_URL    + '" alt="BNB">';
+    const USDG_ICON   = '<img class="usdt-icon" src="' + USDG_ICON_URL   + '" alt="USDG">';
+    const XLAYER_ICON = '<img class="usdt-icon" src="' + XLAYER_ICON_URL + '" alt="X Layer">';
+    const TOKEN_ICON  = TOKEN === 'BNB' ? BNB_ICON : TOKEN === 'USDG' ? USDG_ICON : USDT_ICON;
     const BNB_ICON_GAS = BNB_ICON;
     const NETWORK_ICON = NETWORK.includes('X Layer') ? XLAYER_ICON + ' ' : '';
     const fmtGas = GAS_AMOUNT ? String(GAS_AMOUNT).replace(/0+$/, '').replace(/\\.$/, '') + ' OKB' : '';
