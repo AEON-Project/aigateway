@@ -1,10 +1,13 @@
-import { resolve, loadConfig, getOrCreateDeviceId } from "../config.mjs";
+import { resolve, loadConfig } from "../config.mjs";
 import { getCombinedBalance, getBalanceByAddress } from "../balance.mjs";
+import { getChainConfig } from "../chain-config.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 export async function wallet(opts) {
   const config = loadConfig();
   const { appId } = opts;
+  const cfg = getChainConfig();
+  const network = `${cfg.chain.name} (Chain ID: ${cfg.chain.id})`;
 
   // ── OKX mode ──────────────────────────────────────────────────────────────
   if (config.mode === 'okx') {
@@ -18,8 +21,7 @@ export async function wallet(opts) {
       const bal = await getBalanceByAddress(config.address);
       emitOk("wallet-balance", {
         appId, mode: 'okx', address: config.address,
-        usdt: bal.usdt, bnb: bal.bnb,
-        network: "X Layer Mainnet (Chain ID: 196)",
+        usdt: bal.usdt, bnb: bal.bnb, network,
       }, { mode: 'okx', address: config.address, usdt: bal.usdt });
     } catch (error) {
       emitErr("wallet-balance", "BALANCE_CHECK_FAILED", { message: error.message, appId });
@@ -41,12 +43,12 @@ export async function wallet(opts) {
       mode: config.mode || "private-key",
       address: bal.address,
       usdt: bal.usdt,
-      bnb: bal.bnb,
-      network: "X Layer Mainnet (Chain ID: 196)",
+      bnb:  bal.bnb,
+      network,
     }, { mode: config.mode || "private-key", address: bal.address, usdt: bal.usdt });
 
     if (parseFloat(bal.usdtRaw) === 0) {
-      logInfo("Warning: No USDG balance. Run 'aigateway wallet-topup --amount <usdg>' to add funds.");
+      logInfo(`Warning: No ${cfg.tokenSymbol} balance. Run 'aigateway wallet-topup --amount <n>' to add funds.`);
     }
   } catch (error) {
     emitErr("wallet-balance", "BALANCE_CHECK_FAILED", { message: error.message, appId });
