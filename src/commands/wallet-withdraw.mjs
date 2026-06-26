@@ -1,18 +1,15 @@
 /**
- * wallet-withdraw: reclaim a single asset (USDT or BNB) from session key back to main wallet.
- *
- * One asset per call. The campaign token (BNA) is non-withdrawable and remains on the
- * session key for `sb invoke` use; in user-facing output it appears as "Non-withdrawable USDT".
+ * wallet-withdraw: reclaim USDG (or OKB) from session key back to main wallet on X Layer.
+ * Session-key mode requires OKB for gas — run `wallet-gas` first if OKB balance is 0.
  */
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits, encodeFunctionData } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { xLayer } from "viem/chains";
 import { createInterface } from "node:readline/promises";
-import { loadConfig, resolve, getOrCreateDeviceId } from "../config.mjs";
+import { loadConfig, resolve } from "../config.mjs";
 import { walletSendWithOkx } from "../okx-wallet.mjs";
 import { getBalanceByAddress } from "../balance.mjs";
-import { checkCouponStatus } from "../coupon.mjs";
-import { XLAYER_RPC_URL, USDG_XLAYER, ERC20_TRANSFER_ABI } from "../constants.mjs";
+import { XLAYER_RPC_URL, USDG_XLAYER, USDG_DECIMALS, ERC20_TRANSFER_ABI } from "../constants.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 const BNB_TRANSFER_GAS = 21000n;
@@ -39,18 +36,18 @@ async function promptTokenAndAmount(balance) {
   try {
     logInfo("");
     logInfo("Select asset to withdraw:");
-    logInfo("  1) USDT");
-    logInfo("  2) BNB");
+    logInfo("  1) USDG");
+    logInfo("  2) OKB");
     let token = null;
     while (token === null) {
       const ans = (await rl.question("Enter choice [1-2]: ")).trim();
-      if (ans === "1") token = "USDT";
-      else if (ans === "2") token = "BNB";
+      if (ans === "1") token = "USDG";
+      else if (ans === "2") token = "OKB";
       else logInfo("Invalid choice, please retry.");
     }
 
-    const available = token === "USDT" ? balance.usdtRaw : balance.bnbRaw;
-    const availableStr = token === "USDT" ? balance.usdt : balance.bnb;
+    const available = token === "USDG" ? balance.usdtRaw : balance.bnbRaw;
+    const availableStr = token === "USDG" ? balance.usdt : balance.bnb;
     if (available === 0n) {
       logInfo(`${token} balance is 0, nothing to withdraw.`);
       return { token, raw: 0n };
@@ -101,7 +98,7 @@ export async function withdraw(opts) {
     }
     const bal = await getBalanceByAddress(config.address);
     const amount = opts.amount === 'all' || !opts.amount ? bal.usdt : opts.amount;
-    logInfo(`Withdrawing ${amount} USDT from OKX wallet ${config.address} → ${mainWallet}`);
+    logInfo(`Withdrawing ${amount} USDG from OKX wallet ${config.address} → ${mainWallet}`);
     try {
       const txHash = await walletSendWithOkx({
         recipient: mainWallet,
@@ -145,36 +142,14 @@ export async function withdraw(opts) {
     transport: http(XLAYER_RPC_URL),
   });
 
-  // Ask the server whether the campaign is active → decides whether we query / display BNA.
-  // Mirrors wallet-balance.mjs: when campaignActive=false the client skips the BNA row entirely.
-  const serviceUrl = resolve(opts.serviceUrl, "AIGATEWAY_SERVICE_URL", "serviceUrl");
-  let campaignActive = false;
-  if (serviceUrl) {
-    try {
-      let earlyDeviceId = "";
-      try { earlyDeviceId = getOrCreateDeviceId(); } catch { /* container/restricted env */ }
-      const status = await checkCouponStatus({
-        serviceUrl,
-        userAddress: sessionAddress,
-        deviceId: earlyDeviceId || undefined,
-      });
-      campaignActive = status.ok && status.campaignActive === true;
-    } catch {
-      // Service unreachable → conservatively treat as campaign closed.
-    }
-  }
-
-  const balance = await getBalanceByAddress(sessionAddress, { withToken: campaignActive });
+  const balance = await getBalanceByAddress(sessionAddress);
 
   logInfo(`Session key: ${sessionAddress}`);
   logInfo(`Withdraw to: ${mainWallet}`);
   logInfo("");
-  logInfo("Balance breakdown:");
-  logInfo(`  Withdrawable USDT:     ${balance.usdt}`);
-  if (campaignActive) {
-    logInfo(`  Non-withdrawable USDT: ${balance.token}   (campaign reward, for activity use only)`);
-  }
-  logInfo(`  BNB:                   ${balance.bnb}`);
+  logInfo("Balance:");
+  logInfo(`  USDG: ${balance.usdt}`);
+  logInfo(`  OKB:  ${balance.bnb}  (gas token)`);
 
   // ── Resolve token + amount ─────────────────────────────────────────────
   let token;
@@ -190,15 +165,15 @@ export async function withdraw(opts) {
       return;
     }
     const t = String(opts.token).toUpperCase();
-    if (t !== "USDT" && t !== "BNB") {
+    if (t !== "USDG" && t !== "OKB") {
       emitErr("wallet-withdraw", "INVALID_TOKEN", {
-        message: "--token must be USDT or BNB.",
+        message: "--token must be USDG or OKB.",
         appId,
       });
       return;
     }
     token = t;
-    const available = token === "USDT" ? balance.usdtRaw : balance.bnbRaw;
+    const available = token === "USDG" ? balance.usdtRaw : balance.bnbRaw;
     const parsed = parseAmount(opts.amount, available);
     if (parsed === null) {
       emitErr("wallet-withdraw", "AMOUNT_INVALID", {
@@ -209,9 +184,9 @@ export async function withdraw(opts) {
     }
     if (parsed > available) {
       emitErr("wallet-withdraw", "AMOUNT_EXCEEDS_BALANCE", {
-        message: `Requested ${opts.amount} ${token} but only ${token === "USDT" ? balance.usdt : balance.bnb} available.`,
+        message: `Requested ${opts.amount} ${token} but only ${token === "USDG" ? balance.usdt : balance.bnb} available.`,
         requested: opts.amount,
-        available: token === "USDT" ? balance.usdt : balance.bnb,
+        available: token === "USDG" ? balance.usdt : balance.bnb,
         token,
         appId,
       });
@@ -229,7 +204,7 @@ export async function withdraw(opts) {
     }
     if (balance.usdtRaw === 0n && balance.bnbRaw === 0n) {
       emitErr("wallet-withdraw", "NO_FUNDS", {
-        message: "No withdrawable funds (USDT and BNB are both 0).",
+        message: "No withdrawable funds (USDG and OKB are both 0).",
         appId,
       });
       return;
@@ -253,13 +228,13 @@ export async function withdraw(opts) {
 
   // ── Execute transfer ───────────────────────────────────────────────────
   let txHash = null;
-  if (token === "USDT") {
+  if (token === "USDG") {
     if (balance.bnbRaw === 0n) {
-      emitErr("wallet-withdraw", "INSUFFICIENT_BNB", {
-        message: "No BNB for gas. USDT withdraw is a normal on-chain transfer and requires BNB.",
+      emitErr("wallet-withdraw", "INSUFFICIENT_OKB", {
+        message: "No OKB for gas. USDG withdraw requires OKB to pay X Layer gas fees.",
         address: sessionAddress,
         appId,
-        hint: "Run 'aigateway wallet-gas' to top up BNB via WalletConnect, then retry.",
+        hint: "Run 'aigateway wallet-gas' to send OKB via WalletConnect, then retry.",
       });
       return;
     }
@@ -269,7 +244,7 @@ export async function withdraw(opts) {
         functionName: "transfer",
         args: [mainWallet, amountRaw],
       });
-      logInfo(`\nTransferring ${formatUnits(amountRaw, 18)} USDT → ${mainWallet}...`);
+      logInfo(`\nTransferring ${formatUnits(amountRaw, USDG_DECIMALS)} USDG → ${mainWallet}...`);
       txHash = await walletClient.sendTransaction({ to: USDG_XLAYER, data });
       logInfo(`USDT tx: ${txHash}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
@@ -277,7 +252,7 @@ export async function withdraw(opts) {
       logInfo("USDT reclaimed.");
     } catch (error) {
       emitErr("wallet-withdraw", "WITHDRAW_FAILED", {
-        message: `USDT withdraw failed: ${error.message}`,
+        message: `USDG withdraw failed: ${error.message}`,
         appId,
       });
       return;
@@ -304,12 +279,12 @@ export async function withdraw(opts) {
           message: `Requested ${formatUnits(amountRaw, 18)} BNB + gas exceeds balance ${balance.bnb}.`,
           requested: formatUnits(amountRaw, 18),
           available: balance.bnb,
-          token: "BNB",
+          token: "OKB",
           appId,
         });
         return;
       }
-      logInfo(`\nTransferring ${formatUnits(sendable, 18)} BNB → ${mainWallet}...`);
+      logInfo(`\nTransferring ${formatUnits(sendable, 18)} OKB → ${mainWallet}...`);
       txHash = await walletClient.sendTransaction({
         to: mainWallet,
         value: sendable,
