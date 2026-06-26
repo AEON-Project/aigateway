@@ -5,6 +5,7 @@ export const MAX_POLLS = 42;
 
 export const XLAYER_RPC_URL = "https://xlayerrpc.okx.com";
 export const USDG_XLAYER = "0x4ae46a509f6b1d9056937ba4500cb143933d2dc8";
+export const USDG_DECIMALS = 6;  // USDG on X Layer uses 6 decimals (confirmed on-chain)
 export const FACILITATOR_ADDRESS = "0x555e3311a9893c9B17444C1Ff0d88192a57Ef13e";
 
 export const DEFAULT_WC_PROJECT_ID = "1c5e29cd4b466f52393cd39d05ec265c";

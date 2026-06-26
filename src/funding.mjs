@@ -11,7 +11,7 @@ import {
   requestERC20Transfer,
   setStatus,
 } from "./walletconnect.mjs";
-import { XLAYER_RPC_URL, USDG_XLAYER } from "./constants.mjs";
+import { XLAYER_RPC_URL, USDG_XLAYER, USDG_DECIMALS } from "./constants.mjs";
 import { createPublicClient, http } from "viem";
 import { xLayer } from "viem/chains";
 import { createInterface } from "node:readline/promises";
@@ -83,7 +83,7 @@ export async function fundSessionKey({ sessionAddress, usdtAmount, needGas = fal
         to: sessionAddress,
         token: USDG_XLAYER,
         amount: usdtAmount,
-        decimals: 18,
+        decimals: USDG_DECIMALS,  // 6
       });
       setStatus("tx_submitted", { txHash, amount: usdtAmount, token: "USDG" });
       logInfo(`USDG transfer submitted: ${txHash}`);

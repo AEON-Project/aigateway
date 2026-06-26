@@ -4,7 +4,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, formatUnits } from "viem";
 import { xLayer } from "viem/chains";
-import { XLAYER_RPC_URL, USDG_XLAYER, FACILITATOR_ADDRESS } from "./constants.mjs";
+import { XLAYER_RPC_URL, USDG_XLAYER, USDG_DECIMALS, FACILITATOR_ADDRESS } from "./constants.mjs";
 
 const ERC20_BALANCE_ABI = [
   {
@@ -61,8 +61,8 @@ export async function getBalanceByAddress(address, opts = {}) {
 
   return {
     address,
-    bnb:    formatUnits(okbRaw, 18),   // OKB (native gas token)
-    usdt:   formatUnits(usdgRaw, 18),  // USDG
+    bnb:    formatUnits(okbRaw, 18),          // OKB (native gas token)
+    usdt:   formatUnits(usdgRaw, USDG_DECIMALS),  // USDG (6 decimals)
     bnbRaw: okbRaw,
     usdtRaw: usdgRaw,
     // X Layer has no campaign token
