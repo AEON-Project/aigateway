@@ -83,34 +83,36 @@ export async function topup(opts) {
     return;
   }
 
-  // Determine top-up amount
-  let topupAmount;
-  if (explicitTopup) {
-    const amt = Number(opts.amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      emitErr("wallet-topup", "AMOUNT_INVALID", { message: `Invalid --amount: ${opts.amount}`, appId });
-      return;
-    }
-    if (amt < MIN_TOPUP_USDT) {
-      emitErr("wallet-topup", "TOPUP_AMOUNT_TOO_SMALL", {
-        message: `--amount ${amt} USDG is below the ${MIN_TOPUP_USDT} USDG minimum.`,
-        minTopup: MIN_TOPUP_USDT, appId,
+  // Determine top-up amount (skip when only approve is needed — balance already sufficient)
+  let topupAmount = null;
+  if (needTopup) {
+    if (explicitTopup) {
+      const amt = Number(opts.amount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        emitErr("wallet-topup", "AMOUNT_INVALID", { message: `Invalid --amount: ${opts.amount}`, appId });
+        return;
+      }
+      if (amt < MIN_TOPUP_USDT) {
+        emitErr("wallet-topup", "TOPUP_AMOUNT_TOO_SMALL", {
+          message: `--amount ${amt} is below the ${MIN_TOPUP_USDT} ${cfg.tokenSymbol} minimum.`,
+          minTopup: MIN_TOPUP_USDT, appId,
+        });
+        return;
+      }
+      topupAmount = String(opts.amount);
+      logInfo(`Using --amount: ${topupAmount} ${cfg.tokenSymbol}`);
+    } else if (process.stdin.isTTY) {
+      topupAmount = await promptTopupAmount(MIN_TOPUP_USDT);
+      logInfo(`Selected: ${topupAmount} ${cfg.tokenSymbol}`);
+    } else {
+      emitErr("wallet-topup", "TOPUP_REQUIRED", {
+        message: `${cfg.tokenSymbol} balance ${preBal.usdt} is below the ${LOW_BALANCE_THRESHOLD} minimum. Rerun with --amount.`,
+        threshold: LOW_BALANCE_THRESHOLD, minTopup: MIN_TOPUP_USDT,
+        currentBalance: preBal.usdt, address, appId, presets: TOPUP_PRESETS,
+        hint: `Rerun: aigateway wallet-topup --amount <${cfg.tokenSymbol.toLowerCase()}> --app-id ${appId}`,
       });
       return;
     }
-    topupAmount = String(opts.amount);
-    logInfo(`Using --amount: ${topupAmount} ${cfg.tokenSymbol}`);
-  } else if (process.stdin.isTTY) {
-    topupAmount = await promptTopupAmount(MIN_TOPUP_USDT);
-    logInfo(`Selected: ${topupAmount} ${cfg.tokenSymbol}`);
-  } else {
-    emitErr("wallet-topup", "TOPUP_REQUIRED", {
-      message: `${cfg.tokenSymbol} balance ${preBal.usdt} is below the ${LOW_BALANCE_THRESHOLD} minimum. Rerun with --amount.`,
-      threshold: LOW_BALANCE_THRESHOLD, minTopup: MIN_TOPUP_USDT,
-      currentBalance: preBal.usdt, address, appId, presets: TOPUP_PRESETS,
-      hint: `Rerun: aigateway wallet-topup --amount <${cfg.tokenSymbol.toLowerCase()}> --app-id ${appId}`,
-    });
-    return;
   }
 
   // WalletConnect transfer
