@@ -101,7 +101,7 @@ const QR_EXPIRE_MS = 5 * 60 * 1000;
  * @param {string|null} [originalAmount] - 套餐原价 (优惠模式生效); 与 amount 不同时显示划线原价 + Reward 徽章
  * @param {number}      [couponAmount]   - 优惠抵扣额, 用于徽章 "N Off" 文案 (优惠模式生效)
  */
-function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB Chain(BEP20) only", gasAmount = null, originalAmount = null, couponAmount = 0) {
+function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "X Layer (ERC20)", gasAmount = null, originalAmount = null, couponAmount = 0) {
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>AEON — Wallet Connect</title>
 <style>
@@ -304,12 +304,17 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     const progress = remaining / EXPIRE_MS;
     const dashOffset = -PL * (1 - progress);
 
-    // USDT / BNB 图标 (PNG, 加载自 src/assets/)
+    // Token icons
     const USDT_ICON = '<img class="usdt-icon" src="' + USDT_ICON_URL + '" alt="USDT">';
-    const BNB_ICON = '<img class="usdt-icon" src="' + BNB_ICON_URL + '" alt="BNB">';
-    const TOKEN_ICON = TOKEN === 'BNB' ? BNB_ICON : USDT_ICON;
+    const BNB_ICON  = '<img class="usdt-icon" src="' + BNB_ICON_URL  + '" alt="BNB">';
+    // USDG — Paxos Global Dollar (teal circle with G$)
+    const USDG_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#0D9B8A"/><text x="9" y="13" text-anchor="middle" font-size="8" font-weight="700" font-family="Arial,sans-serif" fill="#fff">G$</text></svg>';
+    // X Layer network icon (dark circle with X)
+    const XLAYER_ICON = '<svg class="usdt-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="9" fill="#111"/><text x="9" y="13.5" text-anchor="middle" font-size="11" font-weight="800" font-family="Arial,sans-serif" fill="#fff">X</text></svg>';
+    const TOKEN_ICON = TOKEN === 'BNB' ? BNB_ICON : TOKEN === 'USDG' ? USDG_ICON : USDT_ICON;
     const BNB_ICON_GAS = BNB_ICON;
-    const fmtGas = GAS_AMOUNT ? String(GAS_AMOUNT).replace(/0+$/, '').replace(/\\.$/, '') + ' BNB' : '';
+    const NETWORK_ICON = NETWORK.includes('X Layer') ? XLAYER_ICON + ' ' : '';
+    const fmtGas = GAS_AMOUNT ? String(GAS_AMOUNT).replace(/0+$/, '').replace(/\\.$/, '') + ' OKB' : '';
 
     // 优惠模式: ORIGINAL_AMOUNT (套餐原价) 与 AMOUNT (实付) 不同时, 显示划线原价 + Reward 徽章
     const isCoupon = ORIGINAL_AMOUNT != null
@@ -332,7 +337,7 @@ function openQRInBrowser(uri, statusPort, amount, token = "USDT", network = "BNB
     const infoCardHTML = AMOUNT ? '<div class="info-card">' +
       '<div class="info-row"><span class="info-label">' + (GAS_AMOUNT ? 'Transaction Amount' : 'Amount') + '</span><span class="' + txValueClass + '">' + txAmountInner + '</span></div>' +
       (GAS_AMOUNT ? '<div class="info-row"><span class="info-label">Gas Amount</span><span class="' + gasValueClass + '">' + BNB_ICON_GAS + fmtGas + '</span></div>' : '') +
-      '<div class="info-row"><span class="info-label">Network</span><span class="info-value">' + NETWORK + '</span></div>' +
+      '<div class="info-row"><span class="info-label">Network</span><span class="info-value">' + NETWORK_ICON + NETWORK + '</span></div>' +
       '</div>' : '';
 
     return '<div class="title">Scan the QR code with your wallet<br>to authorize transfer</div>' +
@@ -553,7 +558,7 @@ export async function initSignClient(projectId) {
  * @param {number}      [couponAmount]   - 优惠抵扣额 (优惠模式)
  * @returns {{ session: object, peerAddress: string }}
  */
-export async function connectWallet(signClient, statusPort, amount = null, token = "USDT", gasAmount = null, originalAmount = null, couponAmount = 0) {
+export async function connectWallet(signClient, statusPort, amount = null, token = "USDG", gasAmount = null, originalAmount = null, couponAmount = 0) {
   const { uri, approval } = await signClient.connect({
     optionalNamespaces: {
       eip155: {
@@ -565,7 +570,7 @@ export async function connectWallet(signClient, statusPort, amount = null, token
   });
 
   // Generate the QR-code page (with status polling) and open it in the browser
-  openQRInBrowser(uri, statusPort, amount, token, "BNB Chain(BEP20) only", gasAmount, originalAmount, couponAmount);
+  openQRInBrowser(uri, statusPort, amount, token, "X Layer (ERC20)", gasAmount, originalAmount, couponAmount);
   console.error("QR code opened in browser. Scan it with your wallet app.");
   console.error("Waiting for wallet approval...");
 
@@ -676,7 +681,7 @@ const FINAL_LINGER_MS = 2000;
  * @param {(ctx: { signClient, session, peerAddress }) => Promise<void>} fn
  */
 export async function withWallet(opts, fn) {
-  const { amount = null, token = "USDT", gasAmount = null, projectId = DEFAULT_WC_PROJECT_ID, originalAmount = null, couponAmount = 0 } = opts;
+  const { amount = null, token = "USDG", gasAmount = null, projectId = DEFAULT_WC_PROJECT_ID, originalAmount = null, couponAmount = 0 } = opts;
   const statusPort = await startStatusServer();
   let signClient = null;
   let session = null;
