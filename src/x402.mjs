@@ -6,8 +6,8 @@ import { registerExactEvmScheme } from "@aeon-ai-pay/evm/exact/client";
 import { toClientEvmSigner } from "@aeon-ai-pay/evm";
 import { privateKeyToAccount } from "viem/accounts";
 import { createWalletClient, createPublicClient, http, publicActions, formatUnits } from "viem";
-import { xLayer } from "viem/chains";
-import { XLAYER_RPC_URL } from "./constants.mjs";
+import { bsc, xLayer } from "viem/chains";
+import { BSC_RPC_URL, XLAYER_RPC_URL } from "./constants.mjs";
 import axios from "axios";
 import { signEIP712WithOkx, contractCallWithOkx } from "./okx-wallet.mjs";
 
@@ -20,8 +20,8 @@ export function createX402Api(privateKey) {
   const evmAccount = privateKeyToAccount(privateKey);
   const walletClient = createWalletClient({
     account: evmAccount,
-    chain: xLayer,
-    transport: http(XLAYER_RPC_URL),
+    chain: bsc,
+    transport: http(BSC_RPC_URL),
   }).extend(publicActions);
 
   const evmSigner = toClientEvmSigner({

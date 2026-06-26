@@ -1,19 +1,21 @@
 /**
- * wallet-topup: top up the session wallet with USDG on X Layer.
+ * wallet-topup: top up the session wallet.
  *
- * X Layer is 0-gas; USDG uses EIP-3009, so no approve step and no gas transfer needed.
- * Flow: check USDG balance → WalletConnect transfer → done.
+ * session-key (BSC): WalletConnect USDT transfer + one-time approve. Needs BNB for approve gas.
+ * okx (X Layer):    WalletConnect USDG transfer only. No approve (EIP-3009), no gas needed.
  */
 import { resolve, loadConfig } from "../config.mjs";
-import { getWalletBalance, getBalanceByAddress } from "../balance.mjs";
+import { getWalletBalance, getBalanceByAddress, getAllowance } from "../balance.mjs";
 import {
   fundSessionKey,
+  approveFacilitator,
   promptTopupAmount,
   LOW_BALANCE_THRESHOLD,
   MIN_TOPUP_USDT,
   TOPUP_PRESETS,
 } from "../funding.mjs";
 import { WalletConnectError } from "../walletconnect.mjs";
+import { getChainConfig } from "../chain-config.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 
 export async function topup(opts) {
@@ -49,17 +51,32 @@ export async function topup(opts) {
     emitErr("wallet-topup", "BALANCE_CHECK_FAILED", { message: `Balance check failed: ${e.message}`, appId });
     return;
   }
+  const cfg     = getChainConfig();
   const address = isOkx ? config.address : preBal.address;
   const usdtNum = parseFloat(preBal.usdt);
   logInfo(`Wallet: ${address}`);
-  logInfo(`Balance: ${preBal.usdt} USDG`);
+  logInfo(`Balance: ${preBal.usdt} ${cfg.tokenSymbol}`);
 
+  // For session-key mode, also check allowance (approve needed on BSC)
+  let allowance = 0n;
+  let needApprove = false;
+  if (!isOkx) {
+    try {
+      allowance = await getAllowance(address);
+      needApprove = allowance === 0n;
+      logInfo(`Allowance: ${needApprove ? "0 (approve required)" : "already approved"}`);
+    } catch (e) {
+      logInfo(`Allowance check failed: ${e.message}`);
+    }
+  }
+
+  const needGas     = !isOkx && needApprove && preBal.bnbRaw === 0n;
   const explicitTopup = opts.amount != null && String(opts.amount).trim() !== "";
   const balanceLow    = usdtNum < LOW_BALANCE_THRESHOLD;
   const needTopup     = balanceLow || explicitTopup;
 
-  if (!needTopup) {
-    logInfo("Wallet already has sufficient USDG balance.");
+  if (!needTopup && !needApprove) {
+    logInfo(`Wallet already has sufficient ${cfg.tokenSymbol} balance.`);
     emitOk("wallet-topup", {
       ready: true, appId, address, usdt: preBal.usdt, topup: null,
     }, { ready: true, success: true });
@@ -82,29 +99,27 @@ export async function topup(opts) {
       return;
     }
     topupAmount = String(opts.amount);
-    logInfo(`Using --amount: ${topupAmount} USDG`);
+    logInfo(`Using --amount: ${topupAmount} ${cfg.tokenSymbol}`);
   } else if (process.stdin.isTTY) {
     topupAmount = await promptTopupAmount(MIN_TOPUP_USDT);
-    logInfo(`Selected: ${topupAmount} USDG`);
+    logInfo(`Selected: ${topupAmount} ${cfg.tokenSymbol}`);
   } else {
     emitErr("wallet-topup", "TOPUP_REQUIRED", {
-      message: `USDG balance ${preBal.usdt} is below the ${LOW_BALANCE_THRESHOLD} USDG threshold. Rerun with --amount <usdg>.`,
-      threshold: LOW_BALANCE_THRESHOLD,
-      minTopup: MIN_TOPUP_USDT,
-      currentBalance: preBal.usdt,
-      address, appId,
-      presets: TOPUP_PRESETS,
-      hint: `Rerun: aigateway wallet-topup --amount <usdg> --app-id ${appId}`,
+      message: `${cfg.tokenSymbol} balance ${preBal.usdt} is below the ${LOW_BALANCE_THRESHOLD} minimum. Rerun with --amount.`,
+      threshold: LOW_BALANCE_THRESHOLD, minTopup: MIN_TOPUP_USDT,
+      currentBalance: preBal.usdt, address, appId, presets: TOPUP_PRESETS,
+      hint: `Rerun: aigateway wallet-topup --amount <${cfg.tokenSymbol.toLowerCase()}> --app-id ${appId}`,
     });
     return;
   }
 
   // WalletConnect transfer
-  logInfo(`Funding flow triggered (${topupAmount} USDG)...`);
+  const willTransfer = [topupAmount ? `${topupAmount} ${cfg.tokenSymbol}` : null, needGas ? `0.0003 ${cfg.nativeSymbol} (approve gas)` : null].filter(Boolean);
+  logInfo(`Funding flow triggered (${willTransfer.join(" + ")})...`);
   logInfo("Opening WalletConnect QR — please scan with your wallet app.");
   let fundResult;
   try {
-    fundResult = await fundSessionKey({ sessionAddress: address, usdtAmount: topupAmount });
+    fundResult = await fundSessionKey({ sessionAddress: address, usdtAmount: needTopup ? topupAmount : null, needGas });
   } catch (e) {
     if (e instanceof WalletConnectError) {
       emitErr("wallet-topup", e.code, { message: e.message, address, appId });
@@ -112,6 +127,17 @@ export async function topup(opts) {
       emitErr("wallet-topup", "FUNDING_FAILED", { message: `Funding failed: ${e.message}`, address, appId });
     }
     return;
+  }
+
+  // Session-key: run one-time approve if needed
+  let approveTx = null;
+  if (!isOkx && needApprove) {
+    try {
+      approveTx = await approveFacilitator(privateKey);
+    } catch (e) {
+      emitErr("wallet-topup", "APPROVE_FAILED", { message: `Pre-authorize failed: ${e.message}`, address, appId });
+      return;
+    }
   }
 
   // Final balance

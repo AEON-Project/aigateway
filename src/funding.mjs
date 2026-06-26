@@ -11,9 +11,8 @@ import {
   requestERC20Transfer,
   setStatus,
 } from "./walletconnect.mjs";
-import { XLAYER_RPC_URL, USDG_XLAYER, USDG_DECIMALS } from "./constants.mjs";
 import { createPublicClient, http } from "viem";
-import { xLayer } from "viem/chains";
+import { getChainConfig } from "./chain-config.mjs";
 import { createInterface } from "node:readline/promises";
 import { logInfo } from "./output.mjs";
 
@@ -64,38 +63,80 @@ export async function promptTopupAmount(minTopup, opts = {}) {
  * @returns {Promise<{peerAddress: string|null}>}
  */
 export async function fundSessionKey({ sessionAddress, usdtAmount, needGas = false }) {
+  const cfg = getChainConfig();
   let connectedPeer = null;
 
-  await withWallet({ amount: usdtAmount, token: "USDG" }, async ({ signClient, session, peerAddress }) => {
+  await withWallet({ amount: usdtAmount, token: cfg.tokenSymbol, chain: cfg.wcChainId }, async ({ signClient, session, peerAddress }) => {
     connectedPeer = peerAddress;
     const publicClient = createPublicClient({
-      chain: xLayer,
-      transport: http(XLAYER_RPC_URL, { timeout: 15000, retryCount: 2 }),
+      chain: cfg.chain,
+      transport: http(cfg.rpcUrl, { timeout: 15000, retryCount: 2 }),
     });
 
     if (usdtAmount) {
-      setStatus("signing", { amount: usdtAmount, token: "USDG", to: sessionAddress });
-      logInfo(`\nRequesting USDG transfer: ${usdtAmount} USDG → ${sessionAddress}`);
+      setStatus("signing", { amount: usdtAmount, token: cfg.tokenSymbol, to: sessionAddress });
+      logInfo(`\nRequesting ${cfg.tokenSymbol} transfer: ${usdtAmount} ${cfg.tokenSymbol} → ${sessionAddress}`);
       logInfo("Please confirm the transaction in your wallet app...");
 
       const txHash = await requestERC20Transfer(signClient, session, {
         from: peerAddress,
         to: sessionAddress,
-        token: USDG_XLAYER,
+        token: cfg.token,
         amount: usdtAmount,
-        decimals: USDG_DECIMALS,  // 6
+        decimals: cfg.tokenDecimals,
       });
-      setStatus("tx_submitted", { txHash, amount: usdtAmount, token: "USDG" });
-      logInfo(`USDG transfer submitted: ${txHash}`);
+      setStatus("tx_submitted", { txHash, amount: usdtAmount, token: cfg.tokenSymbol });
+      logInfo(`${cfg.tokenSymbol} transfer submitted: ${txHash}`);
       logInfo("Waiting for confirmation...");
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
-      if (receipt.status !== "success") throw new Error("USDG transfer transaction reverted");
-      logInfo("USDG transfer confirmed.");
+      if (receipt.status !== "success") throw new Error(`${cfg.tokenSymbol} transfer transaction reverted`);
+      logInfo(`${cfg.tokenSymbol} transfer confirmed.`);
     }
 
-    setStatus("confirmed", { token: "USDG" });
+    setStatus("confirmed", { token: cfg.tokenSymbol });
   });
 
   return { peerAddress: connectedPeer };
+}
+
+/**
+ * Pre-authorize the x402 facilitator to spend session key's payment token (MaxUint256).
+ * Session-key mode only — needs native gas coin (BNB on BSC).
+ */
+export async function approveFacilitator(privateKey) {
+  const cfg = getChainConfig();
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { createWalletClient, maxUint256 } = await import("viem");
+  const { FACILITATOR_ADDRESS } = await import("./constants.mjs");
+
+  const account = privateKeyToAccount(privateKey);
+  const walletClient = createWalletClient({
+    account,
+    chain: cfg.chain,
+    transport: (await import("viem")).http(cfg.rpcUrl, { timeout: 15000, retryCount: 2 }),
+  });
+  const publicClient = (await import("viem")).createPublicClient({
+    chain: cfg.chain,
+    transport: (await import("viem")).http(cfg.rpcUrl, { timeout: 15000, retryCount: 2 }),
+  });
+
+  const ERC20_APPROVE_ABI = [{
+    name: "approve", type: "function", stateMutability: "nonpayable",
+    inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  }];
+
+  logInfo(`Pre-authorizing facilitator from ${account.address}...`);
+  const txHash = await walletClient.writeContract({
+    address: cfg.token,
+    abi: ERC20_APPROVE_ABI,
+    functionName: "approve",
+    args: [FACILITATOR_ADDRESS, maxUint256],
+  });
+  logInfo(`Approve tx submitted: ${txHash}`);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
+  if (receipt.status !== "success") throw new Error(`Approve tx reverted: ${txHash}`);
+  logInfo("Approve confirmed.");
+  return txHash;
 }

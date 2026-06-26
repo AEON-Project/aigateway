@@ -1,10 +1,10 @@
 /**
- * Wallet balance lookup (X Layer / USDG)
+ * Wallet balance lookup — mode-aware (BSC/USDT for session-key, X Layer/USDG for OKX).
  */
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, formatUnits } from "viem";
-import { xLayer } from "viem/chains";
-import { XLAYER_RPC_URL, USDG_XLAYER, USDG_DECIMALS, FACILITATOR_ADDRESS } from "./constants.mjs";
+import { FACILITATOR_ADDRESS } from "./constants.mjs";
+import { getChainConfig } from "./chain-config.mjs";
 
 const ERC20_BALANCE_ABI = [
   {
@@ -29,30 +29,27 @@ const ERC20_ALLOWANCE_ABI = [
   },
 ];
 
-let cachedClient = null;
-
-function getClient() {
-  if (!cachedClient) {
-    cachedClient = createPublicClient({
-      chain: xLayer,
-      transport: http(XLAYER_RPC_URL, { timeout: 6000, retryCount: 1 }),
-    });
-  }
-  return cachedClient;
+function makeClient(cfg) {
+  return createPublicClient({
+    chain: cfg.chain,
+    transport: http(cfg.rpcUrl, { timeout: 6000, retryCount: 1 }),
+  });
 }
 
 /**
- * Query OKB (native) and USDG balance for an address.
- * `bnb`/`bnbRaw` fields kept for API compatibility (native token is OKB on X Layer).
- * @param {string} address
+ * Query native coin and payment token balance for an address.
+ * Chain/token are determined by current config.mode.
+ * Field names `bnb`/`bnbRaw` represent the native gas token (BNB on BSC, OKB on X Layer).
+ * Field names `usdt`/`usdtRaw` represent the payment token (USDT on BSC, USDG on X Layer).
  */
 export async function getBalanceByAddress(address, opts = {}) {
-  const client = getClient();
+  const cfg = getChainConfig();
+  const client = makeClient(cfg);
 
-  const [okbRaw, usdgRaw] = await Promise.all([
+  const [nativeRaw, tokenRaw] = await Promise.all([
     client.getBalance({ address }),
     client.readContract({
-      address: USDG_XLAYER,
+      address: cfg.token,
       abi: ERC20_BALANCE_ABI,
       functionName: "balanceOf",
       args: [address],
@@ -61,10 +58,10 @@ export async function getBalanceByAddress(address, opts = {}) {
 
   return {
     address,
-    bnb:    formatUnits(okbRaw, 18),          // OKB (native gas token)
-    usdt:   formatUnits(usdgRaw, USDG_DECIMALS),  // USDG (6 decimals)
-    bnbRaw: okbRaw,
-    usdtRaw: usdgRaw,
+    bnb:     formatUnits(nativeRaw, 18),
+    usdt:    formatUnits(tokenRaw, cfg.tokenDecimals),
+    bnbRaw:  nativeRaw,
+    usdtRaw: tokenRaw,
     // X Layer has no campaign token
     token:    "0",
     tokenRaw: 0n,
@@ -72,7 +69,7 @@ export async function getBalanceByAddress(address, opts = {}) {
 }
 
 /**
- * Query balance by private key.
+ * Query balance by private key (session-key mode).
  */
 export async function getWalletBalance(privateKey, opts) {
   const account = privateKeyToAccount(privateKey);
@@ -80,24 +77,25 @@ export async function getWalletBalance(privateKey, opts) {
 }
 
 /**
- * Compatibility wrapper — X Layer has no campaign token, always returns USDG only.
+ * Compatibility wrapper — no campaign token on either chain.
  */
 export async function getCombinedBalance(privateKey, opts = {}) {
   const bal = await getWalletBalance(privateKey);
   return {
     ...bal,
-    usdtOnly: bal.usdt,
+    usdtOnly:       bal.usdt,
     campaignActive: false,
   };
 }
 
 /**
- * Query USDG allowance for the facilitator.
+ * Query payment token allowance for the facilitator.
  */
 export async function getAllowance(ownerAddress) {
-  const client = getClient();
+  const cfg = getChainConfig();
+  const client = makeClient(cfg);
   return client.readContract({
-    address: USDG_XLAYER,
+    address: cfg.token,
     abi: ERC20_ALLOWANCE_ABI,
     functionName: "allowance",
     args: [ownerAddress, FACILITATOR_ADDRESS],

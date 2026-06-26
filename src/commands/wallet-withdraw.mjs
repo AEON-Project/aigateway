@@ -197,7 +197,7 @@ export async function withdraw(opts) {
     // Neither flag supplied: prompt in TTY, error in non-TTY.
     if (!isTTY()) {
       emitErr("wallet-withdraw", "NEEDS_AMOUNT", {
-        message: "Non-interactive shell: pass --amount <n> --token <USDT|BNB>.",
+        message: "Non-interactive shell: pass --amount <n> --token <USDG|OKB>.",
         appId,
       });
       return;

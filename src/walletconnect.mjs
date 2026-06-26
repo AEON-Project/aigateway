@@ -560,19 +560,20 @@ export async function initSignClient(projectId) {
  * @param {number}      [couponAmount]   - 优惠抵扣额 (优惠模式)
  * @returns {{ session: object, peerAddress: string }}
  */
-export async function connectWallet(signClient, statusPort, amount = null, token = "USDG", gasAmount = null, originalAmount = null, couponAmount = 0) {
+export async function connectWallet(signClient, statusPort, amount = null, token = "USDG", gasAmount = null, originalAmount = null, couponAmount = 0, chainId = XLAYER_CHAIN_ID) {
   const { uri, approval } = await signClient.connect({
     optionalNamespaces: {
       eip155: {
         methods: ["eth_sendTransaction"],
-        chains: [XLAYER_CHAIN_ID],
+        chains: [chainId],
         events: ["chainChanged", "accountsChanged"],
       },
     },
   });
 
-  // Generate the QR-code page (with status polling) and open it in the browser
-  openQRInBrowser(uri, statusPort, amount, token, "X Layer (ERC20)", gasAmount, originalAmount, couponAmount);
+  // Derive a human-readable network name from chain ID
+  const networkName = chainId === "eip155:56" ? "BNB Chain(BEP20) only" : "X Layer (ERC20)";
+  openQRInBrowser(uri, statusPort, amount, token, networkName, gasAmount, originalAmount, couponAmount);
   console.error("QR code opened in browser. Scan it with your wallet app.");
   console.error("Waiting for wallet approval...");
 
@@ -614,7 +615,7 @@ export async function requestERC20Transfer(signClient, session, { from, to, toke
   const txHash = await Promise.race([
     signClient.request({
       topic: session.topic,
-      chainId: XLAYER_CHAIN_ID,
+      chainId: session.namespaces.eip155.accounts[0].split(":").slice(0,2).join(":"),
       request: {
         method: "eth_sendTransaction",
         params: [
@@ -649,7 +650,7 @@ export async function requestNativeTransfer(signClient, session, { from, to, val
   const txHash = await Promise.race([
     signClient.request({
       topic: session.topic,
-      chainId: XLAYER_CHAIN_ID,
+      chainId: session.namespaces.eip155.accounts[0].split(":").slice(0,2).join(":"),
       request: {
         method: "eth_sendTransaction",
         params: [
@@ -683,7 +684,15 @@ const FINAL_LINGER_MS = 2000;
  * @param {(ctx: { signClient, session, peerAddress }) => Promise<void>} fn
  */
 export async function withWallet(opts, fn) {
-  const { amount = null, token = "USDG", gasAmount = null, projectId = DEFAULT_WC_PROJECT_ID, originalAmount = null, couponAmount = 0 } = opts;
+  const {
+    amount = null,
+    token = "USDG",
+    gasAmount = null,
+    projectId = DEFAULT_WC_PROJECT_ID,
+    originalAmount = null,
+    couponAmount = 0,
+    chain = XLAYER_CHAIN_ID,  // caller passes cfg.wcChainId
+  } = opts;
   const statusPort = await startStatusServer();
   let signClient = null;
   let session = null;
@@ -692,7 +701,7 @@ export async function withWallet(opts, fn) {
   try {
     signClient = await initSignClient(projectId);
     let peerAddress;
-    ({ session, peerAddress } = await connectWallet(signClient, statusPort, amount, token, gasAmount, originalAmount, couponAmount));
+    ({ session, peerAddress } = await connectWallet(signClient, statusPort, amount, token, gasAmount, originalAmount, couponAmount, chain));
     console.error(`Wallet connected: ${peerAddress}`);
 
     await fn({ signClient, session, peerAddress });

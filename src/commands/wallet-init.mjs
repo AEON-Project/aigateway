@@ -4,7 +4,7 @@
  * EIP-3009: no approve step needed. needsTopup is based on USDG balance only.
  */
 import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
-import { getCombinedBalance, getBalanceByAddress } from "../balance.mjs";
+import { getCombinedBalance, getBalanceByAddress, getAllowance } from "../balance.mjs";
 import { walletStatus } from "../okx-wallet.mjs";
 import {
   LOW_BALANCE_THRESHOLD,
@@ -86,11 +86,14 @@ export async function initWallet(opts) {
 
   let usdt = "0", bnb = "0", usdtNum = 0, chainCheckOk = true, chainCheckError = null;
 
+  let allowance = 0n;
   if (!created) {
     try {
       const bal = await getCombinedBalance(config.privateKey);
       usdt = bal.usdt; bnb = bal.bnb; usdtNum = parseFloat(usdt);
-      logInfo(`Balance: ${usdt} USDG, ${bnb} OKB`);
+      logInfo(`Balance: ${usdt} USDT, ${bnb} BNB`);
+      allowance = await getAllowance(config.address);
+      logInfo(`Allowance: ${allowance === 0n ? "0 (approve required)" : "already approved"}`);
     } catch (e) {
       chainCheckOk = false; chainCheckError = e.message;
       logInfo(`Chain status check failed: ${e.message}`);
@@ -103,6 +106,7 @@ export async function initWallet(opts) {
   if (created)                    { needsTopup = true; topupReason = "first_time"; }
   else if (!chainCheckOk)         { needsTopup = true; topupReason = "chain_check_failed"; }
   else if (usdtNum < LOW_BALANCE_THRESHOLD) { needsTopup = true; topupReason = "low_balance"; }
+  else if (allowance === 0n)      { needsTopup = true; topupReason = "no_approve"; }
 
   const deviceId = getOrCreateDeviceId();
 

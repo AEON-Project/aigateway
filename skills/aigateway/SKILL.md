@@ -2,7 +2,7 @@
 name: aigateway
 description: >
   Trigger this skill when the user wants to call AI tools via the x402 protocol,
-  paying per call with USDT on BSC — 200+ tool endpoints: image / video / audio (TTS) /
+  paying per call with USDG on X Layer — 200+ tool endpoints: image / video / audio (TTS) /
   transcription (STT) / web search / web scraping / social & business data / email / SMS /
   document parsing / UI & slide generation / finance / news / geo / utility APIs.
 
@@ -44,7 +44,7 @@ compatibility: Requires Node.js >= 25 and npm
 
 # AEON AI Gateway for AI Agents
 
-**AEON AI Gateway** = a CLI that acts as "**the unified paid entry point for x402-protocol wallet tools**". It lets AI agents call ~200+ AI tools and services on a pay-per-call basis using USDT on BSC (**chat not included**).
+**AEON AI Gateway** = a CLI that acts as "**the unified paid entry point for x402-protocol wallet tools**". It lets AI agents call ~200+ AI tools and services on a pay-per-call basis using USDG on X Layer (**chat not included**).
 
 ## Core Entry Point
 
@@ -172,8 +172,8 @@ All paid calls share the same wallet (session-key or OKX), funded once and reuse
 > - **`wallet-init`** *(local, free)*: check / create wallet, return ready / created / needsTopup status. Works for both modes.
 > - **`wallet-topup`**: both modes use WalletConnect (USDT + 0.0003 BNB for approve gas). For OKX mode the funds go to the OKX wallet address on BSC.
 > - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance: session-key → auto WalletConnect top-up; OKX → returns `INSUFFICIENT_USDT` with deposit address
-> - **`wallet-withdraw`**: session-key → direct on-chain transfer (needs BNB for gas); OKX → `onchainos wallet send` (also needs BNB in OKX wallet for gas)
-> - **`wallet-gas`**: BNB transfer via WalletConnect to the wallet address — works for both modes on BSC
+> - **`wallet-withdraw`**: session-key → direct on-chain transfer (needs OKB for gas — run `wallet-gas` first if OKB=0); OKX → `onchainos wallet send` (gas handled internally)
+> - **`wallet-gas`**: OKB transfer via WalletConnect to the wallet address — needed for session-key mode withdrawals on X Layer
 
 ---
 
@@ -182,17 +182,15 @@ All paid calls share the same wallet (session-key or OKX), funded once and reuse
 The "**identify category → pick model → x402 call**" decision chain (**input validation is built into `sb invoke`**, the agent doesn't need to redo it), prefixed by aigateway's "wallet pre-check / top-up" and suffixed by "render / balance / withdraw" — 5 phases total:
 
 ```
-Phase 1:   Wallet pre-check            ← aigateway-specific, must run before every call
-   ↓
-Phase 1.B: Activity coupon claim       ← coupon-claim, must run after wallet-init (sync blocking)
+Phase 1:   Wallet pre-check            ← must run before every call
    ↓
 Phase 2:   Wallet top-up (conditional) ← when needsTopup=true or the user explicitly asks
    ↓
 Phase 3:   Identify category + pick model ← agent decision
    ↓
-Phase 4:   x402 paid call              ← aigateway's USDT/EIP-712 settlement entry (with built-in inputs validation)
+Phase 4:   x402 paid call              ← USDG/EIP-3009 settlement on X Layer (built-in inputs validation)
    ↓
-Phase 5:   Render response / balance / withdraw ← aigateway wrap-up
+Phase 5:   Render response / balance / withdraw ← wrap-up
 ```
 
 ## Opening Line (must be output verbatim)
@@ -246,20 +244,16 @@ When done, re-run `aigateway wallet-init`.
   "address": "0x...",
   "deviceId": "uuid...",
   "mainWallet": "0x..." | null,
-  "usdt": "6.0",                   // merged U total (withdrawable USDT + activity reward, when campaign active)
-  "withdrawableUsdt": "1.0",       // pure on-chain USDT — the only portion that can be withdrawn to the main wallet
-  "campaignReward": "4.0" | null,  // activity reward U (non-withdrawable, spendable only via sb invoke); null when campaign inactive
-  "campaignActive": true,
-  "bnb": "0.0003",
-  "allowance": "115792...max" | "0",
+  "usdt": "6.0",       // USDG balance on X Layer
+  "bnb": "0.04",       // OKB balance (native gas token on X Layer)
   "needsTopup": false,
-  "topupReason": null | "first_time" | "low_balance" | "no_approve" | "chain_check_failed",
+  "topupReason": null | "first_time" | "low_balance" | "chain_check_failed",
   "minTopup": 6,
   "presets": [6, 10, 20, 50]
 }
 ```
 
-**User-facing rendering rule**: When `campaignActive: true` and `campaignReward` is non-null, surface both numbers separately (e.g. "Withdrawable USDT: {withdrawableUsdt}" + "Activity reward: {campaignReward}") — **never present the merged `usdt` value as if it were all withdrawable**. When `campaignActive: false`, show only `withdrawableUsdt` (which equals `usdt`). Refer to the reward portion only as "activity reward" or "campaign reward" — do not expose any underlying token symbol or contract address in user-facing output.
+**User-facing rendering**: Show USDG balance as the spendable amount. OKB is only relevant for session-key mode withdrawals. No campaign/coupon on X Layer.
 
 ### Decision tree
 
@@ -268,7 +262,7 @@ When done, re-run `aigateway wallet-init`.
 | `mode: "okx"`, `okxSessionExpired: true` | OKX session expired — guide user to re-authenticate (see below) |
 | `mode: "okx"`, `topupReason: "okx_not_configured"` | OKX wallet not set up yet. Guide user to run `wallet-mode okx` (see OKX setup below) |
 | `created: true` | Output "Auto-creating your dedicated wallet..." + "{addr first 3}...{last 4} Ready." |
-| `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready." |
+| `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready. ({usdt} USDG)" |
 | **`needsTopup: true`** | **Jump immediately to Phase 2.** Use `presets` / `minTopup` from the envelope |
 | `needsTopup: false` | Wallet ready, continue to Phase 3 |
 
@@ -305,35 +299,29 @@ OKX_API_KEY=xxx OKX_SECRET_KEY=xxx OKX_PASSPHRASE=xxx aigateway wallet-mode okx
 
 **`--email` and `--otp` are valid flags.** Always use them in agent/non-TTY contexts — do not tell the user these flags are unsupported.
 
-> Note: older versions of this SKILL ran `coupon-claim` unconditionally after wallet-init. From the new version on, the activity coupon is **embedded in `wallet-topup`** and only fires the first time the user actually tops up → no more standalone `coupon-claim`. The standalone `aigateway coupon-claim` command stays around for ops / debug manual re-claim; the agent should not call it by default.
-
 ---
 
-## Phase 2: Wallet Top-Up (conditional, with automatic coupon claim)
+## Phase 2: Wallet Top-Up (conditional)
 
-Triggered when: Phase 1 reports `needsTopup: true` (reason can be `first_time` / `low_balance` / `no_approve`), **or** the user explicitly asks to top up.
+Triggered when: Phase 1 reports `needsTopup: true` (reason: `first_time` / `low_balance` / `chain_check_failed`), **or** the user explicitly asks to top up.
 
 ### Amount selection
 
-This is funding **the session wallet**. The wording must explicitly point to the wallet (distinct from "per-call fees"):
-
-- Preset packages: **6 / 10 / 20 / 50 U** (**U** is the unified pricing unit from the user's perspective; during the campaign 1 U = 1 USDT equivalent; the CLI internally figures out the actual payment)
-- During the campaign the client automatically detects whether this wallet has claimed the coupon yet: not claimed → 6 U package, the user **actually pays 1 USDT** + the server mints 5 equivalent tokens; claimed or campaign closed → regular top-up (package = actual USDT paid)
-- **Before** running the command, ask the user — the question must explicitly mention "wallet" and hint at the U unit:
-
-  > How much **U** do you want to top up to your **session wallet**? (packages: 6 / 10 / 20 / 50)
-
+- Preset packages: **6 / 10 / 20 / 50 USDG**
+- **Before** running, ask the user:
+  > How much **USDG** do you want to top up to your wallet? (packages: 6 / 10 / 20 / 50)
 - After confirmation, run:
 
 ```bash
-aigateway wallet-topup --amount <n>     # unit U; CLI computes the actual USDT
+aigateway wallet-topup --amount <n>
 ```
 
 First output line (**verbatim**):
-
 ```
 > Topping up wallet...
 ```
+
+⚠️ `wallet-topup` opens a WalletConnect QR — **must run synchronously in the foreground**, never `run_in_background: true`.
 
 ### Success envelope shape
 
@@ -341,25 +329,12 @@ First output line (**verbatim**):
 {
   "ready": true,
   "address": "0x...",
-  "usdt": "1.0",
-  "token": "5.0",
-  "totalU": "6.0",
-  "topup": { "displayAmount": "6", "actualPay": "1", "coupon": 5 },
-  "coupon": { "claimed": true, "tokenAmount": "5", "txHash": "0x..." } | null,
-  "approveTx": "0x..." | null
+  "usdt": "6.0",
+  "topup": { "amount": "6" }
 }
 ```
 
-### Decision tree (output **one line** summary per envelope, then continue to Phase 3)
-
-| Field combination | Output text |
-| --- | --- |
-| `coupon.claimed: true` | `🎁 Topped up ${topup.displayAmount} U: paid ${topup.actualPay} USDT, campaign granted ${coupon.tokenAmount} U experience credit, total balance ${totalU} U` |
-| `coupon.claimed: false` | `✅ ${topup.actualPay} USDT received, but coupon mint failed (${coupon.code}). Current balance ${usdt} USDT; contact ops for a manual re-claim if needed` |
-| `coupon: null` + `topup` has value | `✅ Topped up ${topup.displayAmount} USDT, current balance ${totalU} U` (regular flow / already claimed / server unreachable) |
-| `topup: null` | `✅ Wallet ready: ${addr first 3}...{last 4}, balance ${totalU} U` |
-
-⚠️ `wallet-topup` opens a WalletConnect QR — **must run synchronously in the foreground**, never `run_in_background: true`.
+Output: `✅ Topped up ${topup.amount} USDG, current balance ${usdt} USDG`
 
 ### Error situations
 
@@ -368,8 +343,6 @@ First output line (**verbatim**):
 | `TOPUP_AMOUNT_TOO_SMALL` | Show `error.minTopup`, ask for a larger amount |
 | `PAYMENT_REJECTED` | User canceled. **Do not auto-retry** |
 | `PAYMENT_TIMEOUT` | 5-minute window expired. **Do not auto-retry** |
-| `INSUFFICIENT_BNB` (after top-up) | Run `aigateway wallet-gas`, then retry |
-| `APPROVE_FAILED` | On-chain approve failed; surface the error, suggest retry |
 
 ---
 

@@ -1,5 +1,5 @@
 /**
- * gas command: transfer BNB from the main wallet to the local wallet via WalletConnect
+ * gas command: transfer OKB from the main wallet to the local wallet via WalletConnect
  * (used to pay gas during withdraw).
  */
 import { loadConfig } from "../config.mjs";
@@ -34,13 +34,13 @@ export async function gas(opts) {
 
   try {
     const bal = await getBalanceByAddress(sessionAddress);
-    logInfo(`Current balance: ${bal.bnb} BNB`);
+    logInfo(`Current balance: ${bal.bnb} OKB`);
   } catch {}
 
   let bnbTxHash = null;
 
   try {
-    await withWallet({ amount, token: "BNB" }, async ({ signClient, session, peerAddress }) => {
+    await withWallet({ amount, token: "OKB" }, async ({ signClient, session, peerAddress }) => {
       const { createPublicClient, http } = await import("viem");
       const { xLayer } = await import("viem/chains");
       const publicClient = createPublicClient({
@@ -48,8 +48,8 @@ export async function gas(opts) {
         transport: http(XLAYER_RPC_URL, { timeout: 15000, retryCount: 2 }),
       });
 
-      setStatus("signing", { amount, token: "BNB", to: sessionAddress });
-      logInfo(`\nRequesting BNB transfer: ${amount} BNB → ${sessionAddress}`);
+      setStatus("signing", { amount, token: "OKB", to: sessionAddress });
+      logInfo(`\nRequesting OKB transfer: ${amount} OKB → ${sessionAddress}`);
       logInfo("Please confirm the transaction in your wallet app...");
 
       bnbTxHash = await requestNativeTransfer(signClient, session, {
@@ -57,8 +57,8 @@ export async function gas(opts) {
         to: sessionAddress,
         value: amount,
       });
-      setStatus("tx_submitted", { txHash: bnbTxHash, amount, token: "BNB" });
-      logInfo(`BNB transfer submitted: ${bnbTxHash}`);
+      setStatus("tx_submitted", { txHash: bnbTxHash, amount, token: "OKB" });
+      logInfo(`OKB transfer submitted: ${bnbTxHash}`);
       logInfo("Waiting for confirmation...");
 
       const receipt = await publicClient.waitForTransactionReceipt({
@@ -66,11 +66,11 @@ export async function gas(opts) {
         timeout: 60_000,
       });
       if (receipt.status !== "success") {
-        throw new Error("BNB transfer transaction reverted");
+        throw new Error("OKB transfer transaction reverted");
       }
 
-      setStatus("confirmed", { txHash: bnbTxHash, amount, token: "BNB" });
-      logInfo("BNB transfer confirmed.");
+      setStatus("confirmed", { txHash: bnbTxHash, amount, token: "OKB" });
+      logInfo("OKB transfer confirmed.");
     });
   } catch (e) {
     if (e instanceof WalletConnectError) {
