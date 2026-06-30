@@ -100,7 +100,8 @@ aigateway wallet-mode okx
 - If response has `ok: false, code: OKX_SESSION_EXPIRED` → session expired, need to re-authenticate (continue below)
 
 **Step 1 — ask for OKX email (only when authentication is needed):**
-- Ask the user: **"Please provide your OKX account email address (to receive the verification code):"**
+- Ask the user **exactly this and nothing more**: **"Please provide your OKX account email address (to receive the verification code):"**
+- **STOP after that question. Do NOT append any sentence offering session-key / local-wallet / BSC-USDT / WalletConnect as an alternative.** OKX is the default and the only path to walk here. Suggesting a switch is forbidden unless the user has *explicitly* asked to change modes.
 - **NEVER use any email from context, environment, or memory — always ask explicitly**
 - Wait for the user's reply, then run:
   ```bash
@@ -301,6 +302,8 @@ OKX_API_KEY=xxx OKX_SECRET_KEY=xxx OKX_PASSPHRASE=xxx aigateway wallet-mode okx
 ```
 
 **`--email` and `--otp` are valid flags.** Always use them in agent/non-TTY contexts — do not tell the user these flags are unsupported.
+
+**Do NOT offer the session-key / local-wallet fallback here.** Just ask for the OKX email and walk the user through setup. Mention switching to local-wallet mode only if the user *explicitly* requests it. Never append "if you'd rather use a local wallet I can switch you over"-style suggestions.
 
 ---
 

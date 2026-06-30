@@ -13,7 +13,7 @@
  *
  * Endpoint: GET {serviceUrl}/open/api/skillBoss/tools-catalog (no x402)
  */
-import { resolve } from "../config.mjs";
+import { resolve, resolveServiceUrl } from "../config.mjs";
 import { emitOk, emitErr, logInfo } from "../output.mjs";
 import { fetchCatalog, findModel } from "../catalog.mjs";
 
