@@ -82,7 +82,7 @@ export async function withdraw(opts) {
 
   const mainWallet = opts.to || config.mainWallet;
 
-  // ── OKX mode ──────────────────────────────────────────────────────────────
+  // ── OKX mode (default) ────────────────────────────────────────────────────
   if (config.mode === 'okx') {
     if (!config.address) {
       emitErr("wallet-withdraw", "OKX_NOT_CONFIGURED", {
@@ -114,7 +114,7 @@ export async function withdraw(opts) {
     return;
   }
 
-  // ── Default: local session key ────────────────────────────────────────────
+  // ── session-key mode (local key, opt-in) ──────────────────────────────────
   if (!config.privateKey || !config.address) {
     emitErr("wallet-withdraw", "WALLET_NOT_CONFIGURED", {
       message: "No session key found. Nothing to withdraw.",

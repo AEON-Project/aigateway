@@ -14,11 +14,11 @@ Two wallet modes are supported, switchable via `aigateway wallet-mode`:
 
 | Mode | Chain | Token | Gas | Switch |
 |------|-------|-------|-----|--------|
-| **`session-key`** (default) | BSC | USDT (BEP-20) | BNB (one-time approve ~$0.002) | — |
-| **`okx`** | X Layer | USDG (ERC-20) | OKX internal (0 gas for x402 calls) | `aigateway wallet-mode okx` |
+| **`okx`** (default) | X Layer | USDG (ERC-20) | OKX internal (0 gas for x402 calls) | — |
+| **`session-key`** | BSC | USDT (BEP-20) | BNB (one-time approve ~$0.002) | `aigateway wallet-mode session-key` |
 
-- **session-key**: Local private key stored in `~/.aigateway/config.json`. Funded via WalletConnect QR scan.
-- **okx**: [OKX Agentic Wallet](https://web3.okx.com/zh-hans/onchainos/dev-docs/wallet/agentic-wallet) — TEE-backed signing, no local private key. Requires [onchainos CLI](https://github.com/okx/onchainos-skills).
+- **okx** (default): [OKX Agentic Wallet](https://web3.okx.com/zh-hans/onchainos/dev-docs/wallet/agentic-wallet) — TEE-backed signing, no local private key. Requires [onchainos CLI](https://github.com/okx/onchainos-skills). Brand-new users start here automatically.
+- **session-key**: Local private key stored in `~/.aigateway/config.json`. Funded via WalletConnect QR scan. Opt in via `aigateway wallet-mode session-key`.
 
 ---
 
@@ -46,8 +46,8 @@ Two wallet modes are supported, switchable via `aigateway wallet-mode`:
 ┌────────────────────────────────────────────────────────────┐
 │  aigateway CLI (@aeon-ai-pay/aigateway)                    │
 │                                                            │
-│   wallet-mode ─────→ session-key (BSC/USDT)               │
-│                  └─→ okx (X Layer/USDG via OKX TEE)        │
+│   wallet-mode ─────→ okx (X Layer/USDG via OKX TEE) ◀ default │
+│                  └─→ session-key (BSC/USDT)               │
 │                                                            │
 │   sb tools  ──→ server catalog (model + tier + schema)     │
 │   sb invoke ──→ client-side inputs validation              │
@@ -94,8 +94,8 @@ Two wallet modes are supported, switchable via `aigateway wallet-mode`:
 ## Prerequisites
 
 - Node.js ≥ 25
+- **okx mode** (default): [onchainos CLI](https://github.com/okx/onchainos-skills) + OKX account, holding USDG on X Layer
 - **session-key mode**: A WalletConnect-compatible wallet holding USDT (BEP-20) + a small amount of BNB (~$0.002 for one-time approve gas)
-- **okx mode**: [onchainos CLI](https://github.com/okx/onchainos-skills) + OKX account, holding USDG on X Layer
 
 ---
 
@@ -120,25 +120,15 @@ Supported: Claude Code, Cursor, Codex, OpenClaw, Gemini CLI, GitHub Copilot, Win
 
 ### Step 3: Choose wallet mode
 
-#### Option A — session-key (default, BSC + USDT)
+#### Option A — OKX Agentic Wallet (default, X Layer + USDG)
 
-```bash
-# Create local session key
-aigateway wallet-init
-
-# Top up (WalletConnect QR — transfers USDT + BNB for approve gas)
-aigateway wallet-topup --amount 10
-
-# Done — sb invoke is now fully gasless
-```
-
-#### Option B — OKX Agentic Wallet (X Layer + USDG)
+Brand-new installs default to `okx` automatically — just authenticate:
 
 ```bash
 # Install onchainos CLI
 curl -sSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | sh
 
-# Switch mode (interactive wizard: installs CLI, guides login, saves config)
+# Authenticate (interactive wizard: installs CLI, guides login, saves config)
 aigateway wallet-mode okx
 
 # In Claude Code / agent shell (non-TTY), use flags:
@@ -147,6 +137,21 @@ aigateway wallet-mode okx --otp <code>
 
 # Top up (send USDG to displayed address from any wallet)
 aigateway wallet-topup
+```
+
+#### Option B — session-key (BSC + USDT)
+
+Opt out of the default to use a local WalletConnect-funded key:
+
+```bash
+# Switch to session-key mode, then create the local key
+aigateway wallet-mode session-key
+aigateway wallet-init
+
+# Top up (WalletConnect QR — transfers USDT + BNB for approve gas)
+aigateway wallet-topup --amount 10
+
+# Done — sb invoke is now fully gasless
 ```
 
 ### Step 4: Invoke SkillBoss tools
@@ -182,15 +187,17 @@ Every command emits a single JSON envelope to stdout: `{ ok, command, version, d
 
 ## Wallet Mode Details
 
-### session-key (BSC + USDT)
+### okx (X Layer + USDG) — default
 
-- Private key auto-generated at `~/.aigateway/config.json` (mode 0600)
-- One-time `ERC20.approve(facilitator, MaxUint256)` requires ~0.0003 BNB
-- All `sb invoke` calls are gasless after approve
-
-### okx (X Layer + USDG)
-
+- The product default; brand-new users (no prior config) start here automatically
 - TEE-backed key management via OKX Agentic Wallet (no local private key)
 - USDG = [Global Dollar by Paxos](https://github.com/paxosglobal/usdg-contract) (6 decimals, EIP-3009)
 - EIP-3009 `transferWithAuthorization` — no approve step, no gas for payments
-- Switch back anytime: `aigateway wallet-mode session-key`
+
+### session-key (BSC + USDT)
+
+- Opt in via `aigateway wallet-mode session-key`
+- Private key auto-generated at `~/.aigateway/config.json` (mode 0600)
+- One-time `ERC20.approve(facilitator, MaxUint256)` requires ~0.0003 BNB
+- All `sb invoke` calls are gasless after approve
+- Switch back to the default anytime: `aigateway wallet-mode okx`

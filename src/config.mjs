@@ -96,6 +96,26 @@ export function isSessionKeyMode() {
 }
 
 /**
+ * Bootstrap the default payment mode for brand-new users.
+ *
+ * okx is the product default. We persist it only when the user is truly fresh
+ * (no `mode` AND no local `privateKey`), so:
+ *   - an explicit choice (`okx` / `session-key` / `private-key`) is never overridden;
+ *   - a user who already owns a funded local session wallet is never flipped
+ *     (their funds would otherwise be stranded on BSC).
+ *
+ * Called once per CLI invocation from the preAction hook.
+ */
+export function ensureDefaultMode() {
+    const cfg = loadConfig();
+    if (!cfg.mode && !cfg.privateKey) {
+        saveConfig({ ...cfg, mode: "okx" });
+        return "okx";
+    }
+    return cfg.mode || null;
+}
+
+/**
  * Get the correct wallet address for the current mode.
  * session-key: always derive from privateKey (config.address may be stale after okx↔session switch)
  * okx:         use config.address (OKX wallet EVM address)

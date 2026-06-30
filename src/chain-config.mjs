@@ -1,8 +1,8 @@
 /**
  * Mode-aware chain/token configuration.
  *
- * session-key mode → BSC + USDT (original)
- * okx mode         → X Layer + USDG (new)
+ * okx mode (default) → X Layer + USDG
+ * session-key mode    → BSC + USDT (opt-in)
  *
  * Import getChainConfig() wherever the chain or token address depends on mode.
  */
@@ -27,7 +27,7 @@ export function getChainConfig(mode) {
       networkName:   "X Layer (ERC20)",
     };
   }
-  // Default: session-key → BSC + USDT
+  // session-key (opt-in) → BSC + USDT
   return {
     chain:         bsc,
     rpcUrl:        BSC_RPC_URL,

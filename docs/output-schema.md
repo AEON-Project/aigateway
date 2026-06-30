@@ -60,8 +60,8 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "allowance": "115792...max" | "0",
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "no_approve" | "chain_check_failed",
-  "minTopup": 5,
-  "presets": [6, 10, 20, 50],
+  "minTopup": 1,
+  "presets": [1, 10, 20, 50],
   "chainCheck": "ok" | { "error": "..." }
 }
 ```
@@ -161,12 +161,12 @@ Failure shapes carry extra fields per code, e.g.:
   "command": "sb-invoke",
   "error": {
     "code": "TOPUP_REQUIRED",
-    "message": "USDT balance is below the 5 USDT minimum...",
-    "minTopup": 5,
+    "message": "USDG balance is below the 1 USDG minimum...",
+    "minTopup": 1,
     "required": 0.01,
     "currentBalance": "0",
     "address": "0x...",
-    "presets": [6, 10, 20, 50],
+    "presets": [1, 10, 20, 50],
     "hint": "Rerun: aigateway wallet-topup --amount <usdt> --app-id ..."
   }
 }

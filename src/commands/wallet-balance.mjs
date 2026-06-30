@@ -9,7 +9,7 @@ export async function wallet(opts) {
   const cfg = getChainConfig();
   const network = `${cfg.chain.name} (Chain ID: ${cfg.chain.id})`;
 
-  // ── OKX mode ──────────────────────────────────────────────────────────────
+  // ── OKX mode (default) ────────────────────────────────────────────────────
   if (config.mode === 'okx') {
     if (!config.address) {
       emitErr("wallet-balance", "OKX_NOT_CONFIGURED", {
@@ -30,7 +30,7 @@ export async function wallet(opts) {
     return;
   }
 
-  // ── Default: local session key ────────────────────────────────────────────
+  // ── session-key mode (local key, opt-in) ──────────────────────────────────
   const privateKey = resolve(opts.privateKey, "EVM_PRIVATE_KEY", "privateKey");
   if (!privateKey) {
     emitErr("wallet-balance", "WALLET_NOT_CONFIGURED", { appId });

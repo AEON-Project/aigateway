@@ -23,9 +23,10 @@ description: >
   - "Pull <platform> profile" (Twitter / Instagram / LinkedIn / Amazon / Yelp …)
   - "What can I do?"
   - "Top up wallet / check balance / withdraw"
-  - "Switch to OKX wallet / use OKX mode / 切换到OKX / 用OKX钱包"
-  - "Switch back to session key / use local wallet / 切换回默认 / 用本地钱包"
-  - "Change payment mode / configure wallet mode / 设置钱包模式"
+  - "Switch to OKX wallet / use OKX mode"
+  - "Switch to session key / use local wallet"
+  - "Switch back to default / use OKX"
+  - "Change payment mode / configure wallet mode"
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
@@ -84,9 +85,9 @@ When the user expresses any of these intents, enter the **Mode Switch Flow** bel
 
 | User says (examples) | Action |
 |---|---|
-| "切换到OKX" / "用OKX钱包" / "switch to OKX" / "use OKX wallet" | → Switch to OKX mode |
-| "切换回默认" / "用本地钱包" / "use session key" / "switch back" | → Switch to session-key mode |
-| "设置钱包模式" / "change payment mode" | → Ask which mode |
+| "switch to OKX" / "use OKX wallet" / "switch back to default" | → Switch to OKX mode (the default) |
+| "use session key" / "use local wallet" / "switch to session-key" | → Switch to session-key mode |
+| "change payment mode" / "configure wallet mode" | → Ask which mode |
 
 ### Mode Switch Flow — OKX
 
@@ -94,12 +95,12 @@ When the user expresses any of these intents, enter the **Mode Switch Flow** bel
 ```bash
 aigateway wallet-mode okx
 ```
-- If response has `alreadyConfigured: true` → already set up, session active. Confirm "✓ 已是 OKX 模式，钱包地址：{address}"，**stop here, do NOT ask for email**
+- If response has `alreadyConfigured: true` → already set up, session active. Confirm "✓ Already in OKX mode. Wallet: {address}", **stop here, do NOT ask for email**
 - If response has `ok: false, code: USE_FLAGS_IN_AGENT` → need to authenticate (continue below)
 - If response has `ok: false, code: OKX_SESSION_EXPIRED` → session expired, need to re-authenticate (continue below)
 
 **Step 1 — ask for OKX email (only when authentication is needed):**
-- Ask the user: **"请提供您的 OKX 账号邮箱地址（用于接收验证码）："**
+- Ask the user: **"Please provide your OKX account email address (to receive the verification code):"**
 - **NEVER use any email from context, environment, or memory — always ask explicitly**
 - Wait for the user's reply, then run:
   ```bash
@@ -107,20 +108,20 @@ aigateway wallet-mode okx
   ```
 
 **Step 2 — verify OTP:**
-- Ask the user: **"请查收发送到 {email} 的验证码，并告诉我："**
+- Ask the user: **"Please check the verification code sent to {email} and tell me:"**
 - Wait for the user's reply, then run:
   ```bash
   aigateway wallet-mode okx --otp <code>
   ```
 
-**Step 3 — confirm:** On `ok: true`: "✓ 已切换到 OKX 模式，钱包地址：{address}"
+**Step 3 — confirm:** On `ok: true`: "✓ Switched to OKX mode. Wallet: {address}"
 
 ### Mode Switch Flow — session-key
 
 ```bash
 aigateway wallet-mode session-key
 ```
-On success: confirm "✓ 已切换回默认 session-key 模式"
+On success: confirm "✓ Switched to session-key mode (local wallet)"
 
 ---
 
@@ -130,8 +131,8 @@ The CLI supports two payment modes, configurable via `wallet-mode` and persisted
 
 | Mode | Description |
 |------|-------------|
-| `session-key` | Default — local private key, funded via WalletConnect |
-| `okx` | OKX Agentic Wallet — TEE-backed remote signing, no local private key |
+| `okx` | **Default** — OKX Agentic Wallet, TEE-backed remote signing, no local private key (X Layer / USDG). Brand-new users start here automatically. |
+| `session-key` | Opt-in — local private key, funded via WalletConnect (BSC / USDT) |
 
 ### Switching to OKX mode
 
@@ -160,7 +161,7 @@ aigateway wallet-mode okx
 - Workflow: **ask user for their OKX email** → run `--email` step → ask the user for their OTP code in chat → run `--otp` step
 
 ```bash
-# Switching back to default mode
+# Opt out of the default (OKX) into the local session-key mode
 aigateway wallet-mode session-key
 ```
 
@@ -250,8 +251,8 @@ When done, re-run `aigateway wallet-init`.
   "nativeSymbol": "BNB",  // "BNB" or "OKB"
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "chain_check_failed",
-  "minTopup": 6,
-  "presets": [6, 10, 20, 50]
+  "minTopup": 1,
+  "presets": [1, 10, 20, 50]
 }
 ```
 
@@ -309,9 +310,9 @@ Triggered when: Phase 1 reports `needsTopup: true` (reason: `first_time` / `low_
 
 ### Amount selection
 
-- Preset packages: **6 / 10 / 20 / 50 USDG**
+- Preset packages: **1 / 10 / 20 / 50 USDG**
 - **Before** running, ask the user:
-  > How much **USDG** do you want to top up to your wallet? (packages: 6 / 10 / 20 / 50)
+  > How much **USDG** do you want to top up to your wallet? (packages: 1 / 10 / 20 / 50)
 - After confirmation, run:
 
 ```bash
@@ -633,7 +634,7 @@ Then summarize the actual result in **one or two sentences** (top 3 search hits,
 
 ### Balance lookup
 
-Triggered when the user asks something like "check my balance" / "查余额" / "how much USDT do I have?".
+Triggered when the user asks something like "check my balance" / "how much USDT do I have?".
 
 ```bash
 aigateway wallet-balance

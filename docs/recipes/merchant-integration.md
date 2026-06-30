@@ -70,7 +70,7 @@ if (envelope.ok) {
   showImages(envelope.data.downloaded);                   // [{ localPath, format, width, height, sizeHuman, ... }]
 } else if (envelope.error.code === "TOPUP_REQUIRED") {
   // Headless / non-TTY ran out of USDT. Use envelope.error.presets and rerun.
-  promptUserToTopup(envelope.error.presets);              // [6, 10, 20, 50]
+  promptUserToTopup(envelope.error.presets);              // [1, 10, 20, 50]
 }
 ```
 
@@ -185,7 +185,7 @@ function handleEnvelope(envelope, exitCode) {
 
     case "INSUFFICIENT_USDT":
     case "TOPUP_REQUIRED":
-      await yourTopupFlow(envelope.error.presets);       // [6, 10, 20, 50]
+      await yourTopupFlow(envelope.error.presets);       // [1, 10, 20, 50]
       return { ok: false, retry: true };
 
     case "INSUFFICIENT_BNB":

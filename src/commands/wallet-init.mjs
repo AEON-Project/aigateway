@@ -1,7 +1,8 @@
 /**
- * wallet-init: check / create the local session wallet (X Layer / USDG).
+ * wallet-init: check / create the wallet for the current mode.
  *
- * EIP-3009: no approve step needed. needsTopup is based on USDG balance only.
+ * okx (default) → X Layer / USDG; EIP-3009, no approve step, needsTopup by USDG balance.
+ * session-key   → BSC / USDT; auto-creates a local key, approve required.
  */
 import { loadConfig, saveConfig, getOrCreateDeviceId, resolve } from "../config.mjs";
 import { getCombinedBalance, getBalanceByAddress, getAllowance } from "../balance.mjs";
@@ -19,7 +20,7 @@ export async function initWallet(opts) {
   const { appId } = opts;
   const cfg = getChainConfig();
 
-  // ── OKX mode ──────────────────────────────────────────────────────────────
+  // ── OKX mode (default) ────────────────────────────────────────────────────
   if (config.mode === 'okx') {
     if (!config.address) {
       emitOk("wallet-init", {
@@ -70,7 +71,7 @@ export async function initWallet(opts) {
     return;
   }
 
-  // ── Default: local session key ────────────────────────────────────────────
+  // ── session-key mode (local key, opt-in) ──────────────────────────────────
   let created = false;
 
   if (!config.privateKey) {

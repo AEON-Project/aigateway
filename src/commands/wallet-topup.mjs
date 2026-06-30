@@ -1,8 +1,8 @@
 /**
  * wallet-topup: top up the session wallet.
  *
- * session-key (BSC): WalletConnect USDT transfer + one-time approve. Needs BNB for approve gas.
- * okx (X Layer):    WalletConnect USDG transfer only. No approve (EIP-3009), no gas needed.
+ * okx (X Layer, default): WalletConnect USDG transfer only. No approve (EIP-3009), no gas needed.
+ * session-key (BSC):      WalletConnect USDT transfer + one-time approve. Needs BNB for approve gas.
  */
 import { resolve, loadConfig } from "../config.mjs";
 import { getWalletBalance, getBalanceByAddress, getAllowance } from "../balance.mjs";

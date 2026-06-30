@@ -17,8 +17,8 @@ import { createInterface } from "node:readline/promises";
 import { logInfo } from "./output.mjs";
 
 export const LOW_BALANCE_THRESHOLD = 1;
-export const MIN_TOPUP_USDT = 6;
-export const TOPUP_PRESETS = [6, 10, 20, 50];
+export const MIN_TOPUP_USDT = 1;
+export const TOPUP_PRESETS = [1, 10, 20, 50];
 // No coupon campaign on X Layer
 export const COUPON_AMOUNT_USDT = 0;
 

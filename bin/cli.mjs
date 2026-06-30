@@ -25,6 +25,7 @@ process.on("uncaughtException", (err) => {
 
 import { Command } from "commander";
 import { checkForUpdates } from "../src/update-check.mjs";
+import { ensureDefaultMode } from "../src/config.mjs";
 import { setLegacyMode, setVerboseMode, setQuietMode } from "../src/output.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -50,6 +51,9 @@ program
     setLegacyMode(opts.legacyOutput);
     setVerboseMode(opts.verbose);
     setQuietMode(opts.quiet);
+    // Default brand-new users to OKX mode (product default). No-op for anyone
+    // who already has an explicit mode or a funded local session wallet.
+    ensureDefaultMode();
   });
 
 program
@@ -63,9 +67,9 @@ program
 
 program
   .command("wallet-topup")
-  .description("Top-up USDT (≥1 USDT floor / ≥5 USDT minimum per top-up) and one-time facilitator approve via WalletConnect")
+  .description("Top-up the wallet (≥1 minimum per top-up) and one-time facilitator approve via WalletConnect")
   .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
-  .option("--amount <usdt>", "USDT amount to top-up (presets: 5/10/20/50, or custom ≥5)")
+  .option("--amount <usdt>", "Amount to top-up (presets: 1/10/20/50, or custom ≥1)")
   .option("--private-key <key>", "Override EVM private key")
   .action(async (opts) => {
     const { topup } = await import("../src/commands/wallet-topup.mjs");
@@ -119,7 +123,7 @@ sb
   .option("--app-id <id>", "Merchant app ID", DEFAULT_APP_ID)
   .option("--output <dir>", "Output directory for binary downloads (image/video/audio)")
   .option("--raw", "Skip auto-download and emit the upstream response as-is", false)
-  .option("--topup-amount <usdt>", "USDT top-up amount when balance is insufficient (≥5)")
+  .option("--topup-amount <usdt>", "Top-up amount when balance is insufficient (≥1)")
   .option("--private-key <key>", "Override EVM private key")
   .action(async (opts) => {
     const { sbInvokeCommand } = await import("../src/commands/sb-invoke.mjs");
@@ -140,7 +144,7 @@ sb
 
 program
   .command("wallet-mode")
-  .description("Switch payment mode: okx (OKX Agentic Wallet) | session-key (local default)")
+  .description("Switch payment mode: okx (OKX Agentic Wallet, default) | session-key (local key)")
   .argument("<mode>", "okx or session-key")
   .option("--email <email>", "OKX account email — sends OTP (step 1 of email login)")
   .option("--otp <code>",    "OTP code received by email (step 2 of email login)")
