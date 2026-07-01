@@ -20,6 +20,7 @@ import {
   verifyOtp,
   walletStatus,
   getOkxEvmAddress,
+  logout,
 } from '../okx-wallet.mjs';
 import { emitOk, emitErr, logInfo } from '../output.mjs';
 
@@ -52,40 +53,58 @@ export async function setWalletMode(mode, opts = {}) {
 
   const config = loadConfig();
 
+  // Explicit --email / --otp signals "authenticate (possibly as a different
+  // account)", so skip the short-circuit below and run the auth flow. Without
+  // this gate, an alive session for the OLD email would short-circuit here and
+  // keep returning the old wallet address — the new --email is silently ignored.
+  const wantsReauth = !!opts.email || !!opts.otp;
+
   // Check if onchainos session is already alive — regardless of current config.mode.
   // This covers the common case of switching session-key ↔ okx repeatedly:
   // the user authenticated once, switched away, and now switches back.
-  try {
-    const status = await walletStatus();
-    const loggedIn = status.loggedIn === true || status.data?.loggedIn === true;
-    if (loggedIn) {
-      const address = config.address && config.mode === 'okx'
-        ? config.address        // reuse cached address
-        : await getOkxEvmAddress(); // re-fetch (mode was session-key, address might be stale)
-      logInfo(`OKX session is active — address: ${address}`);
-      config.mode    = 'okx';
-      config.address = address;
-      saveConfig(config);
-      emitOk('wallet-mode',
-        { mode: 'okx', address, alreadyConfigured: true },
-        { mode: 'okx', address, alreadyConfigured: true });
-      return;
+  if (!wantsReauth) {
+    try {
+      const status = await walletStatus();
+      const loggedIn = status.loggedIn === true || status.data?.loggedIn === true;
+      if (loggedIn) {
+        const address = config.address && config.mode === 'okx'
+          ? config.address        // reuse cached address
+          : await getOkxEvmAddress(); // re-fetch (mode was session-key, address might be stale)
+        logInfo(`OKX session is active — address: ${address}`);
+        config.mode    = 'okx';
+        config.address = address;
+        saveConfig(config);
+        emitOk('wallet-mode',
+          { mode: 'okx', address, alreadyConfigured: true },
+          { mode: 'okx', address, alreadyConfigured: true });
+        return;
+      }
+      logInfo('OKX session expired — re-authenticating...');
+    } catch {
+      // onchainos unavailable or not logged in, proceed to auth flow
     }
-    logInfo('OKX session expired — re-authenticating...');
-  } catch {
-    // onchainos unavailable or not logged in, proceed to auth flow
   }
 
-  // Path A: API Key already in env or config
+  // Path A: API Key already in env or config (skip when the user explicitly
+  // asked for email auth — the --email intent must win over stale API keys).
   const hasApiKey = process.env.OKX_API_KEY || config.okxApiKey;
-  if (hasApiKey) {
+  if (hasApiKey && !wantsReauth) {
     logInfo('Using existing OKX API Key credentials.');
     await _finalise('apikey');
     return;
   }
 
-  // Path B: --email flag (step 1 — send OTP)
+  // Path B: --email flag (step 1 — send OTP).
+  // Clear any live session first so we authenticate as the new account and the
+  // stale cached address doesn't leak through.
   if (opts.email) {
+    try {
+      await logout();
+      config.address = undefined;
+      saveConfig(config);
+    } catch {
+      // no active session to clear, or onchainos hiccup — login proceeds anyway
+    }
     await _sendOtp(opts.email);
     return;
   }

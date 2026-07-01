@@ -86,6 +86,13 @@ export async function walletStatus() {
   return run(['wallet', 'status']);
 }
 
+// Logout + clear all stored onchainos credentials (~/.onchainos/session.json etc).
+// Needed when the user switches to a different email/account: an alive session
+// otherwise short-circuits re-auth and keeps returning the old wallet address.
+export async function logout() {
+  return run(['wallet', 'logout']);
+}
+
 // ─── Address discovery ────────────────────────────────────────────────────────
 
 export async function getOkxEvmAddress() {

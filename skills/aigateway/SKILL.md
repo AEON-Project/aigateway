@@ -30,7 +30,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.4.3"
+  version: "0.4.4"
   author: AEON-Project
   openclaw:
     requires:
@@ -88,16 +88,19 @@ When the user expresses any of these intents, enter the **Mode Switch Flow** bel
 | "switch to OKX" / "use OKX wallet" / "switch back to default" | → Switch to OKX mode (the default) |
 | "use session key" / "use local wallet" / "switch to session-key" | → Switch to session-key mode |
 | "change payment mode" / "configure wallet mode" | → Ask which mode |
+| "switch OKX email/account" / "log in with a different email" / "use another OKX account" | → **Re-authenticate OKX (new account)** — go straight to Step 1 below with `--email`; do NOT run Step 0 |
 
 ### Mode Switch Flow — OKX
 
-**Step 0 — check current state first:**
+**Step 0 — check current state first:** *(SKIP this step when the user wants to switch email / log in with a different account — go straight to Step 1. Step 0 would return `alreadyConfigured` for the OLD account and block the switch.)*
 ```bash
 aigateway wallet-mode okx
 ```
 - If response has `alreadyConfigured: true` → already set up, session active. Confirm "✓ Already in OKX mode. Wallet: {address}", **stop here, do NOT ask for email**
 - If response has `ok: false, code: USE_FLAGS_IN_AGENT` → need to authenticate (continue below)
 - If response has `ok: false, code: OKX_SESSION_EXPIRED` → session expired, need to re-authenticate (continue below)
+
+> Passing `--email` always re-authenticates: the CLI logs out any live session first, so a new email yields a fresh wallet address (it no longer silently reuses the previous account).
 
 **Step 1 — ask for OKX email (only when authentication is needed):**
 - Ask the user **exactly this and nothing more**: **"Please provide your OKX account email address (to receive the verification code):"**
