@@ -17,8 +17,8 @@ Two wallet modes are supported, switchable via `aigateway wallet-mode`:
 | **`okx`** (default) | X Layer | USDG (ERC-20) | OKX internal (0 gas for x402 calls) | — |
 | **`session-key`** | BSC | USDT (BEP-20) | BNB (one-time approve ~$0.002) | `aigateway wallet-mode session-key` |
 
-- **okx** (default): [OKX Agentic Wallet](https://web3.okx.com/zh-hans/onchainos/dev-docs/wallet/agentic-wallet) — TEE-backed signing, no local private key. Requires [onchainos CLI](https://github.com/okx/onchainos-skills). Brand-new users start here automatically.
-- **session-key**: Local private key stored in `~/.aigateway/config.json`. Funded via WalletConnect QR scan. Opt in via `aigateway wallet-mode session-key`.
+- **okx** (default): [OKX Agentic Wallet](https://web3.okx.com/zh-hans/onchainos/dev-docs/wallet/agentic-wallet) — TEE-backed signing, no local private key. Requires [onchainos CLI](https://github.com/okx/onchainos-skills). Brand-new users start here automatically. Surfaced to users as **Provider: OKX Agentic Wallet**.
+- **session-key**: Local private key stored in `~/.aigateway/config.json`. Funded via WalletConnect QR scan. Opt in via `aigateway wallet-mode session-key`. Surfaced to users as **Provider: Aeon Agentic Wallet**.
 
 ---
 

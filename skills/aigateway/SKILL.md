@@ -30,7 +30,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.4.2"
+  version: "0.4.3"
   author: AEON-Project
   openclaw:
     requires:
@@ -265,10 +265,24 @@ When done, re-run `aigateway wallet-init`.
 | --- | --- |
 | `mode: "okx"`, `okxSessionExpired: true` | OKX session expired — guide user to re-authenticate (see below) |
 | `mode: "okx"`, `topupReason: "okx_not_configured"` | OKX wallet not set up yet. Guide user to run `wallet-mode okx` (see OKX setup below) |
-| `created: true` | Output "Auto-creating your dedicated wallet..." + "{addr first 3}...{last 4} Ready." |
+| `created: true` | Render the **wallet card** below (with "Auto-creating your dedicated wallet..." as the first line), then follow the `needsTopup` branch |
 | `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready. ({usdt} {tokenSymbol})" |
-| **`needsTopup: true`** | **Jump immediately to Phase 2.** Use `presets` / `minTopup` from the envelope |
+| **`needsTopup: true`** | Render the **wallet card** below, then **jump immediately to Phase 2.** Use `presets` / `minTopup` from the envelope |
 | `needsTopup: false` | Wallet ready, continue to Phase 3 |
+
+**Wallet card** (render when the wallet was just created or has no funds; translate phrasing to the user's locale, preserve structure):
+
+```
+Wallet ({address first 3}...{last 4}):
+
+- Network: {network}
+- Provider: OKX Agentic Wallet     ← OKX mode; in session-key mode show "- Provider: Aeon Agentic Wallet" instead
+- Withdrawable {tokenSymbol}: {usdt}
+
+Your wallet is set up but has no funds yet. Top up with {presets joined by " / "} {tokenSymbol} to start making paid calls.
+```
+
+Use `tokenSymbol` from the envelope for the currency label — never hardcode "USDT" / "USDG". The "Provider" line reads exactly `Provider: OKX Agentic Wallet` in OKX mode and `Provider: Aeon Agentic Wallet` in session-key mode; never surface the raw `mode` value.
 
 ### OKX session expired (when `okxSessionExpired: true`)
 
@@ -645,11 +659,26 @@ aigateway wallet-balance
 
 `envelope.data`: `{ address, usdt, withdrawableUsdt, campaignReward, campaignActive, bnb, mainWallet? }`
 
-Render template (translate phrasing to the user's locale; preserve structure):
+Render template (translate phrasing to the user's locale; preserve structure).
+
+**OKX mode** (envelope has `mode: "okx"`, `network`, `tokenSymbol`):
 
 ```
 Wallet ({address first 3}...{last 4}):
 
+- Network: {network}
+- Provider: OKX Agentic Wallet
+- Withdrawable {tokenSymbol}: {usdt}
+```
+
+The "Provider" line reads exactly `Provider: OKX Agentic Wallet` — do not surface the raw `mode` value.
+
+**session-key mode** (BSC / USDT):
+
+```
+Wallet ({address first 3}...{last 4}):
+
+- Provider: Aeon Agentic Wallet
 - Withdrawable USDT: {withdrawableUsdt}
 - Activity reward: {campaignReward} U  (non-withdrawable; for activity use only)   ← omit this line when campaignActive=false or campaignReward is null
 - BNB: {bnb}  (for USDT withdraw gas)
