@@ -21,7 +21,8 @@ export async function wallet(opts) {
       const bal = await getBalanceByAddress(config.address);
       emitOk("wallet-balance", {
         appId, mode: 'okx', address: config.address,
-        usdt: bal.usdt, tokenSymbol: cfg.tokenSymbol, network,
+        paymentBalance: bal.payment, usdt: bal.usdt,
+        tokenSymbol: cfg.tokenSymbol, network, provider: cfg.provider,
         // OKX mode: gas is handled internally, no need to show native token balance
       }, { mode: 'okx', address: config.address, usdt: bal.usdt });
     } catch (error) {
@@ -43,11 +44,14 @@ export async function wallet(opts) {
       appId,
       mode: config.mode || "private-key",
       address: bal.address,
+      paymentBalance: bal.payment,
+      gasBalance: bal.gas,
       usdt: bal.usdt,
       bnb:  bal.bnb,
       tokenSymbol: cfg.tokenSymbol,
       nativeSymbol: cfg.nativeSymbol,
       network,
+      provider: cfg.provider,
     }, { mode: config.mode || "private-key", address: bal.address, usdt: bal.usdt });
 
     if (parseFloat(bal.usdtRaw) === 0) {

@@ -168,7 +168,7 @@ export async function withdraw(opts) {
     }
     const t = String(opts.token).toUpperCase();
     if (t !== cfg.tokenSymbol && t !== cfg.nativeSymbol) {
-      emitErr("wallet-withdraw", "INVALID_TOKEN", {
+      emitErr("wallet-withdraw", "INVALID_WITHDRAW_TOKEN", {
         message: `--token must be ${cfg.tokenSymbol} or ${cfg.nativeSymbol}.`,
         appId,
       });
@@ -254,7 +254,7 @@ export async function withdraw(opts) {
       logInfo(`${cfg.tokenSymbol} reclaimed.`);
     } catch (error) {
       emitErr("wallet-withdraw", "WITHDRAW_FAILED", {
-        message: `USDG withdraw failed: ${error.message}`,
+        message: `${cfg.tokenSymbol} withdraw failed: ${error.message}`,
         appId,
       });
       return;
@@ -278,7 +278,7 @@ export async function withdraw(opts) {
         }
       } else if (amountRaw + gasCost > balance.bnbRaw) {
         emitErr("wallet-withdraw", "AMOUNT_EXCEEDS_BALANCE", {
-          message: `Requested ${formatUnits(amountRaw, 18)} BNB + gas exceeds balance ${balance.bnb}.`,
+          message: `Requested ${formatUnits(amountRaw, 18)} ${cfg.nativeSymbol} + gas exceeds balance ${balance.bnb}.`,
           requested: formatUnits(amountRaw, 18),
           available: balance.bnb,
           token: cfg.nativeSymbol,
@@ -293,13 +293,13 @@ export async function withdraw(opts) {
         gas: BNB_TRANSFER_GAS,
         gasPrice,
       });
-      logInfo(`BNB tx: ${txHash}`);
+      logInfo(`${cfg.nativeSymbol} tx: ${txHash}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 60_000 });
       if (receipt.status !== "success") throw new Error(`${cfg.nativeSymbol} transfer reverted`);
       logInfo(`${cfg.nativeSymbol} reclaimed.`);
     } catch (error) {
       emitErr("wallet-withdraw", "WITHDRAW_FAILED", {
-        message: `BNB withdraw failed: ${error.message}`,
+        message: `${cfg.nativeSymbol} withdraw failed: ${error.message}`,
         appId,
       });
       return;

@@ -28,10 +28,11 @@ export const COUPON_AMOUNT_USDT = 0;
 export async function promptTopupAmount(minTopup, opts = {}) {
   const presets = TOPUP_PRESETS.filter((v) => v >= minTopup);
   const customIdx = presets.length + 1;
+  const sym = getChainConfig().tokenSymbol;
 
   logInfo("");
-  logInfo(`Choose top-up amount in USDG (minimum ${minTopup}):`);
-  presets.forEach((v, i) => logInfo(`  ${i + 1}) ${v} USDG`));
+  logInfo(`Choose top-up amount in ${sym} (minimum ${minTopup}):`);
+  presets.forEach((v, i) => logInfo(`  ${i + 1}) ${v} ${sym}`));
   logInfo(`  ${customIdx}) Custom amount`);
 
   const rl = createInterface({ input: process.stdin, output: process.stderr });
@@ -41,9 +42,9 @@ export async function promptTopupAmount(minTopup, opts = {}) {
       const n = Number(ans);
       if (Number.isInteger(n) && n >= 1 && n <= presets.length) return String(presets[n - 1]);
       if (Number.isInteger(n) && n === customIdx) {
-        const custom = (await rl.question(`Enter USDG amount (>= ${minTopup}): `)).trim();
+        const custom = (await rl.question(`Enter ${sym} amount (>= ${minTopup}): `)).trim();
         const cn = Number(custom);
-        if (!Number.isFinite(cn) || cn < minTopup) { logInfo(`Minimum is ${minTopup} USDG.`); continue; }
+        if (!Number.isFinite(cn) || cn < minTopup) { logInfo(`Minimum is ${minTopup} ${sym}.`); continue; }
         return custom;
       }
       logInfo("Invalid choice, please retry.");

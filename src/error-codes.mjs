@@ -17,13 +17,19 @@ export const ERROR_CODES = {
   SERVICE_URL_MISSING:    { exit: 1, message: "Service URL not configured." },
   AMOUNT_INVALID:         { exit: 1, message: "Invalid amount." },
   AMOUNT_EXCEEDS_BALANCE: { exit: 1, message: "Requested amount exceeds available balance." },
-  INSUFFICIENT_USDT:      { exit: 1, message: "Insufficient USDT balance." },
-  INSUFFICIENT_TOKEN:     { exit: 1, message: "Insufficient coupon token balance for this call. Retry — server will fall back to USDT." },
-  INSUFFICIENT_BNB:       { exit: 1, message: "Insufficient BNB for gas." },
+  // Canonical, mode-neutral balance/gas codes.
+  INSUFFICIENT_BALANCE:   { exit: 1, message: "Insufficient balance." },
+  INSUFFICIENT_GAS:       { exit: 1, message: "Insufficient gas balance." },
+  // Deprecated aliases (BSC-flavoured names) — kept so existing consumers/docs
+  // keep resolving. New code should emit INSUFFICIENT_BALANCE / INSUFFICIENT_GAS.
+  INSUFFICIENT_USDT:      { exit: 1, message: "Insufficient balance." },
+  INSUFFICIENT_BNB:       { exit: 1, message: "Insufficient gas balance." },
+  INSUFFICIENT_TOKEN:     { exit: 1, message: "Insufficient reward-token balance for this call. Retry — the server will settle from your main balance." },
   NO_FUNDS:               { exit: 1, message: "No funds available." },
   NO_MAIN_WALLET:         { exit: 1, message: "No main wallet address configured. Use --to <address>." },
   NEEDS_AMOUNT:           { exit: 1, message: "Non-interactive withdraw requires both --amount and --token." },
-  INVALID_TOKEN:          { exit: 1, message: "--token must be USDT or BNB." },
+  INVALID_WITHDRAW_TOKEN: { exit: 1, message: "--token does not match the wallet's payment or gas token." },
+  INVALID_TOKEN:          { exit: 1, message: "--token does not match the wallet's payment or gas token." }, // deprecated alias of INVALID_WITHDRAW_TOKEN
   MISSING_MODEL:          { exit: 1, message: "Missing --model. Provide a tool model id (see references/tools.md)." },
   MISSING_INPUTS:         { exit: 1, message: "Missing --inputs. Provide a JSON object or @path/to/file.json." },
   INVALID_INPUTS_JSON:    { exit: 1, message: "Failed to parse --inputs as JSON." },
@@ -33,7 +39,7 @@ export const ERROR_CODES = {
   CATEGORY_NOT_FOUND:     { exit: 1, message: "Category not found in catalog." },
   MODEL_PRICING_NOT_CONFIGURED: { exit: 1, message: "This model is not yet priced on the gateway. Ask the operator to add it to skillboss-pricing.json." },
   INVALID_BODY:           { exit: 1, message: "Server rejected the request body." },
-  TOPUP_REQUIRED:         { exit: 1, message: "Wallet top-up required. Choose an amount and rerun with --topup-amount <usdt>." },
+  TOPUP_REQUIRED:         { exit: 1, message: "Wallet top-up required. Choose an amount and rerun with --topup-amount <n>." },
   TOPUP_AMOUNT_TOO_SMALL: { exit: 1, message: "Top-up amount is below the minimum." },
   PAYMENT_REJECTED:       { exit: 1, message: "Payment approval was rejected. Please try again if you'd like to proceed." },
 

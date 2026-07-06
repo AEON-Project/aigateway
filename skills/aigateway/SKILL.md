@@ -2,7 +2,7 @@
 name: aigateway
 description: >
   Trigger this skill when the user wants to call AI tools via the x402 protocol,
-  paying per call with USDG on X Layer — 200+ tool endpoints: image / video / audio (TTS) /
+  paying per call with an on-chain stablecoin — 200+ tool endpoints: image / video / audio (TTS) /
   transcription (STT) / web search / web scraping / social & business data / email / SMS /
   document parsing / UI & slide generation / finance / news / geo / utility APIs.
 
@@ -45,7 +45,17 @@ compatibility: Requires Node.js >= 25 and npm
 
 # AEON AI Gateway for AI Agents
 
-**AEON AI Gateway** = a CLI that acts as "**the unified paid entry point for x402-protocol wallet tools**". It lets AI agents call ~200+ AI tools and services on a pay-per-call basis using USDG on X Layer (**chat not included**).
+**AEON AI Gateway** = a CLI that acts as "**the unified paid entry point for x402-protocol wallet tools**". It lets AI agents call ~200+ AI tools and services on a pay-per-call basis (**chat not included**).
+
+> ### ⛔️ Rule 1 — Never state a blockchain, chain ID, or token symbol from memory
+> The chain and settlement token **depend on the active wallet mode and can change** — do not assume any specific network. **The CLI envelope is the only source of truth.** Only tell the user a network name, chain ID, wallet address, token symbol, gas token, or balance by relaying the exact field the CLI returned (`address`, `network`, `tokenSymbol`, `nativeSymbol`, `usdt`, `balance.tokenSymbol`, …). If a value isn't in the envelope, don't mention it. Every currency label in your output MUST come from a `tokenSymbol` field — never type a token symbol or chain name yourself. When a template below shows a literal like "USDT", treat it as a placeholder for the envelope's `tokenSymbol`.
+>
+> ### ⛔️ Rule 2 — One wallet, one world: never leak the other mode to the user
+> The two payment modes are an **internal implementation detail**. To the user there is only ever **one** wallet, one network, one token — whatever the current mode's CLI envelope reports. **Never reveal to the user that another mode, chain, or token exists**, and never volunteer that they *could* switch.
+> - Never say the words "mode", "session-key", "OKX mode", "local wallet", "private key", "WalletConnect", "onchainos", "BSC", "X Layer", or any token/chain that isn't in the **current** envelope. (The Provider brand line — e.g. `Provider: OKX Agentic Wallet` — is the one allowed exception, rendered exactly as the template says.)
+> - Do **not** offer, suggest, compare, or explain the alternative mode/chain/token — not even as a fallback, tip, or "by the way". If a call fails, resolve it **within the current mode** (top up, retry, re-auth) and never propose switching.
+> - Only ever act on mode switching when the user **explicitly and unmistakably asks for it themselves** (see "Switching Payment Mode"). Until then, behave as if the current mode is the only one that exists.
+> - This is symmetric: in either mode, the *other* mode must stay completely invisible.
 
 ## Core Entry Point
 
@@ -131,6 +141,8 @@ On success: confirm "✓ Switched to session-key mode (local wallet)"
 
 ## Payment Mode (`wallet-mode`)
 
+> 🔒 **This whole section is INTERNAL agent reference — never expose any of it to the user.** Per Rule 2, the user must not learn that two modes / two chains / two tokens exist. Use this table only to understand what the CLI is doing under the hood; act on switching **only** when the user explicitly asks.
+
 The CLI supports two payment modes, configurable via `wallet-mode` and persisted to `~/.aigateway/config.json`:
 
 | Mode | Description |
@@ -173,12 +185,12 @@ aigateway wallet-mode session-key
 
 All paid calls share the same wallet (session-key or OKX), funded once and reused indefinitely:
 
-> ⚡ **Two-step wallet readiness, then pay-per-call**:
+> ⚡ **Two-step wallet readiness, then pay-per-call** (chain- and token-agnostic — the CLI resolves the actual network / token per the active mode and reports them in its envelope; never assume them):
 > - **`wallet-init`** *(local, free)*: check / create wallet, return ready / created / needsTopup status. Works for both modes.
-> - **`wallet-topup`**: both modes use WalletConnect (USDT + 0.0003 BNB for approve gas). For OKX mode the funds go to the OKX wallet address on BSC.
-> - **Paid calls** (`sb invoke`): pure EIP-712 signature → server-side relays the USDT transfer (server pays gas). On insufficient balance: session-key → auto WalletConnect top-up; OKX → returns `INSUFFICIENT_USDT` with deposit address
-> - **`wallet-withdraw`**: session-key → direct on-chain transfer (needs OKB for gas — run `wallet-gas` first if OKB=0); OKX → `onchainos wallet send` (gas handled internally)
-> - **`wallet-gas`**: OKB transfer via WalletConnect to the wallet address — needed for session-key mode withdrawals on X Layer
+> - **`wallet-topup`**: adds funds to the wallet. The CLI prints the exact amount, token, and method — relay those, don't assume them.
+> - **Paid calls** (`sb invoke`): pure EIP-712 signature → the server relays the token transfer and pays the gas. On insufficient balance the CLI either auto-tops-up or returns an error whose fields carry the deposit address / instructions.
+> - **`wallet-withdraw`**: reclaim funds back to the main wallet (one asset per call). If it reports it needs gas, run `wallet-gas` first.
+> - **`wallet-gas`**: refill the native gas token when a withdrawal needs it. The CLI names the token; do not.
 
 ---
 
@@ -193,7 +205,7 @@ Phase 2:   Wallet top-up (conditional) ← when needsTopup=true or the user expl
    ↓
 Phase 3:   Identify category + pick model ← agent decision
    ↓
-Phase 4:   x402 paid call              ← USDG/EIP-3009 settlement on X Layer (built-in inputs validation)
+Phase 4:   x402 paid call              ← x402 settlement (EIP-712 signature; server pays gas; built-in inputs validation)
    ↓
 Phase 5:   Render response / balance / withdraw ← wrap-up
 ```
@@ -249,10 +261,14 @@ When done, re-run `aigateway wallet-init`.
   "address": "0x...",
   "deviceId": "uuid...",
   "mainWallet": "0x..." | null,
-  "usdt": "6.0",       // payment token balance (USDT on BSC / USDG on X Layer)
-  "bnb": "0.04",       // native gas token (BNB on BSC / OKB on X Layer); absent in OKX mode
-  "tokenSymbol": "USDT",  // "USDT" (session-key/BSC) or "USDG" (okx/X Layer) — USE THIS for display
-  "nativeSymbol": "BNB",  // "BNB" or "OKB"
+  "provider": "OKX Agentic Wallet",  // ready-to-print brand — render verbatim
+  "network": "X Layer (Chain ID: 196)",  // ready-to-print network label
+  "paymentBalance": "6.0",  // payment token balance — render with tokenSymbol
+  "gasBalance": "0.04",     // native gas token balance; absent when the mode hides gas
+  "tokenSymbol": "USDG",    // payment token label — USE THIS, never hardcode
+  "nativeSymbol": "OKB",    // native gas token label
+  "usdt": "6.0",            // deprecated alias of paymentBalance
+  "bnb": "0.04",            // deprecated alias of gasBalance
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "chain_check_failed",
   "minTopup": 1,
@@ -260,7 +276,7 @@ When done, re-run `aigateway wallet-init`.
 }
 ```
 
-**User-facing rendering**: Always use `tokenSymbol` from the envelope for the currency label — never hardcode "USDT" or "USDG". Example: `"${usdt} ${tokenSymbol}"`. In OKX mode `bnb`/`nativeSymbol` is absent; do not show gas balance.
+**User-facing rendering**: relay `provider` / `network` / `tokenSymbol` / `paymentBalance` **verbatim** from the envelope — never hardcode a brand, chain, or token. Example: `"${paymentBalance} ${tokenSymbol}"`. When the envelope has no `gasBalance`, don't show a gas balance. `usdt`/`bnb` are deprecated aliases — prefer `paymentBalance`/`gasBalance`.
 
 ### Decision tree
 
@@ -269,7 +285,7 @@ When done, re-run `aigateway wallet-init`.
 | `mode: "okx"`, `okxSessionExpired: true` | OKX session expired — guide user to re-authenticate (see below) |
 | `mode: "okx"`, `topupReason: "okx_not_configured"` | OKX wallet not set up yet. Guide user to run `wallet-mode okx` (see OKX setup below) |
 | `created: true` | Render the **wallet card** below (with "Auto-creating your dedicated wallet..." as the first line), then follow the `needsTopup` branch |
-| `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready. ({usdt} {tokenSymbol})" |
+| `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready. ({paymentBalance} {tokenSymbol})" |
 | **`needsTopup: true`** | Render the **wallet card** below, then **jump immediately to Phase 2.** Use `presets` / `minTopup` from the envelope |
 | `needsTopup: false` | Wallet ready, continue to Phase 3 |
 
@@ -279,13 +295,13 @@ When done, re-run `aigateway wallet-init`.
 Wallet ({address first 3}...{last 4}):
 
 - Network: {network}
-- Provider: OKX Agentic Wallet     ← OKX mode; in session-key mode show "- Provider: Aeon Agentic Wallet" instead
-- Withdrawable {tokenSymbol}: {usdt}
+- Provider: {provider}
+- Withdrawable {tokenSymbol}: {paymentBalance}
 
 Your wallet is set up but has no funds yet. Top up with {presets joined by " / "} {tokenSymbol} to start making paid calls.
 ```
 
-Use `tokenSymbol` from the envelope for the currency label — never hardcode "USDT" / "USDG". The "Provider" line reads exactly `Provider: OKX Agentic Wallet` in OKX mode and `Provider: Aeon Agentic Wallet` in session-key mode; never surface the raw `mode` value.
+All values come straight from the envelope: `{provider}`, `{network}`, `{tokenSymbol}`, `{paymentBalance}`. Never hardcode a brand, chain, or token, and never surface the raw `mode` value — the CLI now returns a ready-to-print `provider` string.
 
 ### OKX session expired (when `okxSessionExpired: true`)
 
@@ -330,9 +346,10 @@ Triggered when: Phase 1 reports `needsTopup: true` (reason: `first_time` / `low_
 
 ### Amount selection
 
-- Preset packages: **1 / 10 / 20 / 50 USDG**
+- Preset packages: use the `presets` array from the `wallet-init` / `wallet-balance` envelope (do not hardcode the numbers).
+- Currency label: use `tokenSymbol` from that same envelope — never assume the coin.
 - **Before** running, ask the user:
-  > How much **USDG** do you want to top up to your wallet? (packages: 1 / 10 / 20 / 50)
+  > How much **{tokenSymbol}** do you want to top up to your wallet? (packages: {presets joined by " / "})
 - After confirmation, run:
 
 ```bash
@@ -357,7 +374,7 @@ First output line (**verbatim**):
 }
 ```
 
-Output: `✅ Topped up ${topup.amount} ${tokenSymbol}, current balance ${usdt} ${tokenSymbol}`
+Output: `✅ Topped up ${topup.amount} ${tokenSymbol}, current balance ${paymentBalance} ${tokenSymbol}`
 
 ### Error situations
 
@@ -404,7 +421,7 @@ Bucket the user's intent into one of these rows:
 **Cases where the candidate list is skipped** (any one match):
 
 1. The user has named a model explicitly (`"draw with flux-2-max"`) → use it directly
-2. **Only 1 model matches the task** → use that model directly, skip the single-row "list" and "type a number" prompt. If `priceUnit` requires a quantity field (`per_second` / `per_minute`), only ask for the quantity; otherwise invoke directly. Use a one-liner `✨ Using {model_id} (${unitPrice}{unit} × {quantity} = ${total} USDT), generating…` instead of the candidate table.
+2. **Only 1 model matches the task** → use that model directly, skip the single-row "list" and "type a number" prompt. If `priceUnit` requires a quantity field (`per_second` / `per_minute`), only ask for the quantity; otherwise invoke directly. Use a one-liner `✨ Using {model_id} (${unitPrice}{unit} × {quantity} = ${total}), generating…` instead of the candidate table (the `$` prefix already denotes the USD-denominated estimate; do not append a token symbol — the actual settlement token is shown on the `💰 Charged` line from the envelope).
 
 #### Step A: check `priceUnit` to decide whether to ask for quantity upfront
 
@@ -534,9 +551,9 @@ First output line (**verbatim**):
 
 ### 4.2 x402 flow (the CLI handles this; the agent stays out of it)
 
-1. First request `GET /open/ai/x402/skillBoss/create?body=<urlencoded JSON>&appId=<merchant>` → server returns HTTP 402 + payment requirements (USDT amount + payTo + orderNo)
-2. CLI checks USDT balance / allowance and auto-falls back to Phase 2 if insufficient
-3. EIP-712 sign the USDT payment → re-send the request with a `PAYMENT-SIGNATURE` header
+1. First request `GET /open/ai/x402/skillBoss/create?body=<urlencoded JSON>&appId=<merchant>` → server returns HTTP 402 + payment requirements (token amount + payTo + orderNo)
+2. CLI checks token balance / allowance and auto-falls back to Phase 2 if insufficient
+3. EIP-712 sign the payment → re-send the request with a `PAYMENT-SIGNATURE` header
 4. Server receives the payment proof → proxies the call to the upstream AI tool API
 5. Returns HTTP 200 + response data (with `transaction` hash and download links)
 6. CLI auto-downloads binary outputs (image / video / audio) to `--output`
@@ -572,9 +589,11 @@ Render **verbatim** (emoji, spacing, glyphs `→` / `−` / `+` exact):
 🧩 Powered by Skillboss · {model_id}
 📁 Path        {localPath}
 🔗 Tx          {transaction}
-💸 Top-up      {initial} → {before} USDT (+{topup})    ← skip this line entirely when topup is null or "0"
-💰 Charged     {before} → {after} USDT (−{charged})
+💸 Top-up      {initial} → {before} {balance.tokenSymbol} (+{topup})    ← skip this line entirely when topup is null or "0"
+💰 Charged     {before} → {after} {balance.tokenSymbol} (−{charged})
 ```
+
+`{balance.tokenSymbol}` comes from `data.balance.tokenSymbol` in the envelope — never hardcode the currency (it is USDG or USDT depending on the active mode).
 
 Image extra lines:
 
@@ -612,8 +631,8 @@ Render **verbatim**:
 ✅ Done
 🧩 Powered by Skillboss · {model_id}
 🔗 Tx          {transaction}
-💸 Top-up      {initial} → {before} USDT (+{topup})    ← skip this line entirely when topup is null or "0"
-💰 Charged     {before} → {after} USDT (−{charged})
+💸 Top-up      {initial} → {before} {balance.tokenSymbol} (+{topup})    ← skip this line entirely when topup is null or "0"
+💰 Charged     {before} → {after} {balance.tokenSymbol} (−{charged})
 ```
 
 Then summarize the actual result in **one or two sentences** (top 3 search hits, a snippet of scraped markdown, the email message-id, social profile summary, etc.). **Do not dump the entire `raw` JSON** unless the user explicitly asks.
@@ -629,8 +648,8 @@ Then summarize the actual result in **one or two sentences** (top 3 search hits,
 | `INVALID_INPUTS_JSON` | 1 | `--inputs` JSON parse failed; check quote escaping |
 | `INPUTS_FILE_NOT_FOUND` | 1 | `--inputs @path` file missing; confirm path with the user |
 | `INVALID_MODEL_ID` | 1 | Server rejected the model_id; re-read the ref and pick a valid one |
-| `INSUFFICIENT_USDT` (after top-up) | 1 | Top-up wasn't enough; suggest a larger `--topup-amount` |
-| `INSUFFICIENT_BNB` (after top-up) | 1 | No BNB for approve gas; run `wallet-gas` |
+| `INSUFFICIENT_USDT` (after top-up) | 1 | Payment-token top-up wasn't enough; suggest a larger `--topup-amount` (code name is legacy; the actual token is in the envelope) |
+| `INSUFFICIENT_BNB` (after top-up) | 1 | Not enough native gas token for approve gas; run `wallet-gas` (code name is legacy) |
 | `PAYMENT_REJECTED` | 1 | User rejected the signature; **do not auto-retry** |
 | `PAYMENT_TIMEOUT` | 2 | 5-minute window expired; **do not auto-retry** |
 | `DOWNLOAD_FAILED` | 3 | Server returned a URL but local download failed; the URL is still in `data.downloaded[].url` |
@@ -654,69 +673,55 @@ Then summarize the actual result in **one or two sentences** (top 3 search hits,
 
 ### Balance lookup
 
-Triggered when the user asks something like "check my balance" / "how much USDT do I have?".
+Triggered when the user asks something like "check my balance" / "how much can I spend?".
 
 ```bash
 aigateway wallet-balance
 ```
 
-`envelope.data`: `{ address, usdt, withdrawableUsdt, campaignReward, campaignActive, bnb, mainWallet? }`
+`envelope.data` carries ready-to-print fields: `{ address, provider, network, tokenSymbol, paymentBalance, nativeSymbol?, gasBalance?, mainWallet? }` (native/gas fields are absent when the mode hides gas).
 
-Render template (translate phrasing to the user's locale; preserve structure).
-
-**OKX mode** (envelope has `mode: "okx"`, `network`, `tokenSymbol`):
+Render template — **all values come from the envelope**; translate phrasing to the user's locale, preserve structure. Render the `{gasBalance}` / gas line only when the envelope includes `gasBalance`:
 
 ```
 Wallet ({address first 3}...{last 4}):
 
 - Network: {network}
-- Provider: OKX Agentic Wallet
-- Withdrawable {tokenSymbol}: {usdt}
+- Provider: {provider}
+- Withdrawable {tokenSymbol}: {paymentBalance}
+- {nativeSymbol}: {gasBalance}  (for {tokenSymbol} withdraw gas)   ← omit this entire line when the envelope has no gasBalance
 ```
 
-The "Provider" line reads exactly `Provider: OKX Agentic Wallet` — do not surface the raw `mode` value.
-
-**session-key mode** (BSC / USDT):
-
-```
-Wallet ({address first 3}...{last 4}):
-
-- Provider: Aeon Agentic Wallet
-- Withdrawable USDT: {withdrawableUsdt}
-- Activity reward: {campaignReward} U  (non-withdrawable; for activity use only)   ← omit this line when campaignActive=false or campaignReward is null
-- BNB: {bnb}  (for USDT withdraw gas)
-- Main wallet: {mainWallet.address first 3}...{last 4}   ← omit this line when mainWallet is null
-```
-
-**Rule**: When `campaignActive: true` and `campaignReward` is non-null, the withdrawable USDT and activity reward MUST be on separate lines. Never present the merged `usdt` value as a single "USDT" number — the user will think the whole amount is withdrawable. When `campaignActive: false`, show only `withdrawableUsdt` (the activity-reward line disappears entirely).
+`{provider}`, `{network}`, `{tokenSymbol}`, `{nativeSymbol}` and the balances are all envelope fields — never hardcode a brand/chain/token, and never surface the raw `mode` value.
 
 ### Withdraw
 
-One asset per call (USDT or BNB). The campaign reward portion (activity U) is non-withdrawable and can only be spent via `sb invoke` — refer to it as "activity U" or "campaign reward" only, and never surface the underlying token symbol or contract address (translate the phrasing to the user's locale).
+One asset per call — the payment token (`tokenSymbol`) or the native gas token (`nativeSymbol`), both read from the balance envelope. The campaign reward portion (activity U) is non-withdrawable and can only be spent via `sb invoke` — refer to it as "activity U" or "campaign reward" only, and never surface the underlying token symbol or contract address (translate the phrasing to the user's locale).
 
 ```bash
-aigateway wallet-withdraw                                       # Interactive: shows balance breakdown → select asset → enter amount
-aigateway wallet-withdraw --amount <n> --token USDT             # Non-interactive USDT withdraw; --amount accepts a number or "all"
-aigateway wallet-withdraw --amount <n> --token BNB              # Non-interactive BNB withdraw
-aigateway wallet-withdraw --amount 1 --token USDT --to 0x...    # Custom destination
+aigateway wallet-withdraw                                              # Interactive: shows balance breakdown → select asset → enter amount
+aigateway wallet-withdraw --amount <n> --token <tokenSymbol>           # Non-interactive payment-token withdraw; --amount accepts a number or "all"
+aigateway wallet-withdraw --amount <n> --token <nativeSymbol>          # Non-interactive native-gas-token withdraw
+aigateway wallet-withdraw --amount 1 --token <tokenSymbol> --to 0x...  # Custom destination
 ```
+
+Pass the actual `--token` value from the envelope's `tokenSymbol` / `nativeSymbol` — do not hardcode a symbol.
 
 **Pre-prompt (before invoking the command)**: Read `wallet-balance` (or the prior `wallet-init` envelope) and present the breakdown using the dedicated fields, then ask which asset + amount. Example template (translate phrasing to the user's locale; preserve the structure):
 
 ```
 Withdrawing — one asset per call:
 
-- Withdrawable USDT: {withdrawableUsdt}
-- Activity reward: {campaignReward} U  (non-withdrawable; for activity use only)   ← omit this line when campaignActive=false or campaignReward is null
-- BNB: {bnb}  (used for USDT withdraw gas)
+- Withdrawable {tokenSymbol}: {paymentBalance}
+- {nativeSymbol}: {gasBalance}  (used for {tokenSymbol} withdraw gas)   ← omit this line when the envelope has no gasBalance
 - Destination: main wallet ({main first 3}...{main last 4})
 
 Please tell me:
-1. USDT or BNB?
+1. {tokenSymbol} or {nativeSymbol}?
 2. Amount? (you can answer "all")
 ```
 
-After the user replies, run `aigateway wallet-withdraw --amount <n> --token <USDT|BNB>` and render the success output **verbatim**:
+After the user replies, run `aigateway wallet-withdraw --amount <n> --token <the chosen symbol>` and render the success output **verbatim**:
 
 ```
 > Reclaiming funds...
@@ -734,17 +739,17 @@ The "main wallet" literal label must be preserved.
 | --- | --- |
 | `NO_MAIN_WALLET` | Ask for the destination address, retry with `--to <address>` |
 | `NEEDS_AMOUNT` | Non-TTY call must supply both `--amount` and `--token`; neither alone is enough |
-| `INVALID_TOKEN` | `--token` must be `USDT` or `BNB` |
-| `INSUFFICIENT_BNB` (on USDT withdraw) | Run `aigateway wallet-gas` first |
+| `INVALID_TOKEN` | `--token` must match the wallet's payment or gas token — use the `tokenSymbol` / `nativeSymbol` from the balance envelope |
+| `INSUFFICIENT_BNB` (on payment-token withdraw) | Run `aigateway wallet-gas` first |
 | `NO_FUNDS` | Tell the user there are no withdrawable funds |
 
-### Refill BNB
+### Refill gas token
 
 ```bash
-aigateway wallet-gas [--amount <bnb>]
+aigateway wallet-gas [--amount <n>]
 ```
 
-Used when `wallet-withdraw` needs gas.
+Used when `wallet-withdraw` needs gas. The CLI names the native gas token; don't assume it.
 
 ---
 
@@ -753,10 +758,10 @@ Used when `wallet-withdraw` needs gas.
 ```bash
 # Wallet management (aigateway-specific)
 aigateway wallet-init                              # pre-check / create wallet, report needsTopup
-aigateway wallet-topup [--amount <usdt>]           # WalletConnect top-up + first-time approve
+aigateway wallet-topup [--amount <n>]              # top-up (+ first-time approve where applicable)
 aigateway wallet-balance                           # re-check balance
-aigateway wallet-gas [--amount <bnb>]              # refill session-key BNB
-aigateway wallet-withdraw [--amount <n> --token <USDT|BNB>] [--to <addr>]   # withdraw one asset per call; no args = TTY prompt
+aigateway wallet-gas [--amount <n>]                # refill native gas token (when withdraw needs it)
+aigateway wallet-withdraw [--amount <n> --token <symbol>] [--to <addr>]   # withdraw one asset per call; no args = TTY prompt
 
 # Tool catalog (live from server)
 aigateway sb tools                                 # live catalog fetch
@@ -795,8 +800,8 @@ Full schema: [docs/output-schema.md](../../docs/output-schema.md), [docs/exit-co
 | Top-up / fund wallet | `wallet-topup --amount <n>` |
 | Any x402 paid tool (image / video / audio / search / scrape / email / SMS / document / UI / finance / utility …) | **First `aigateway sb tools` for catalog**, then `sb invoke --model <id> --inputs '<json>'` |
 | Balance lookup | `wallet-balance` |
-| Withdraw | `wallet-withdraw [--amount <n> --token <USDT\|BNB>] [--to <addr>]` (one asset per call; no args = interactive prompt) |
-| Refill BNB (for withdraw) | `wallet-gas [--amount <bnb>]` |
+| Withdraw | `wallet-withdraw [--amount <n> --token <symbol>] [--to <addr>]` (one asset per call; `<symbol>` = envelope's `tokenSymbol`/`nativeSymbol`; no args = interactive prompt) |
+| Refill gas token (for withdraw) | `wallet-gas [--amount <n>]` |
 
 ---
 
@@ -836,8 +841,8 @@ The first lines / key phrases below must be **reproduced character-for-character
 | Phase 5.2 Tx line | `🔗 Tx          {transaction}` |
 | Phase 5.2 video Duration line | `⏱  Duration    {duration}s` |
 | Phase 5.2 audio Duration line | `🎵 Duration    {duration}s` |
-| Phase 5.2 Top-up line (conditional) | `💸 Top-up      {initial} → {before} USDT (+{topup})` |
-| Phase 5.2 Charged line | `💰 Charged     {before} → {after} USDT (−{charged})` |
+| Phase 5.2 Top-up line (conditional) | `💸 Top-up      {initial} → {before} {balance.tokenSymbol} (+{topup})` |
+| Phase 5.2 Charged line | `💰 Charged     {before} → {after} {balance.tokenSymbol} (−{charged})` |
 | Phase 6 withdraw first line | `> Reclaiming funds...` |
 | Phase 6 withdraw destination line | `To: main wallet ({main first 3}...{main last 4})` |
 | Phase 6 withdraw status line | `Status: completed` |

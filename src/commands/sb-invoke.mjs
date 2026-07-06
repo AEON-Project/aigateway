@@ -204,8 +204,9 @@ export async function invoke(opts) {
     balanceInitialUsdt = usdt;
     balanceBeforeChargeUsdt = usdt;
 
-    logInfo(`Wallet: ${address}`);
-    logInfo(`Balance: ${usdt} USDG, ${bnb} OKB`);
+    const balCfg = getChainConfig();
+    logInfo(`Wallet: ${address} (${balCfg.chain.name})`);
+    logInfo(`Balance: ${usdt} ${balCfg.tokenSymbol}, ${bnb} ${balCfg.nativeSymbol}`);
 
     // X Layer: single accept (USDG). Pick the first affordable accept.
     const selection = selectAcceptByBalance(
@@ -236,7 +237,8 @@ export async function invoke(opts) {
       chosenRawAccept: chosenAccept.raw,
     };
     requiredUsdt = paymentReq.amountUsdt;
-    logInfo(`Pay with USDG: ${requiredUsdt} (pay to ${paymentReq.payTo})`);
+    const sym = getChainConfig().tokenSymbol;
+    logInfo(`Pay with ${sym}: ${requiredUsdt} (pay to ${paymentReq.payTo})`);
 
     const usdtNum = parseFloat(usdt);
     const requiredWei = BigInt(paymentReq.amountWei);
@@ -252,7 +254,7 @@ export async function invoke(opts) {
       needTopup = true;
       const shortfall = requiredUsdt - usdtNum;
       const minTopup = Math.max(MIN_TOPUP_USDT, Math.ceil(shortfall));
-      logInfo(`USDG insufficient: have ${usdtNum}, need ${requiredUsdt}, shortfall ${shortfall.toFixed(6)}`);
+      logInfo(`${sym} insufficient: have ${usdtNum}, need ${requiredUsdt}, shortfall ${shortfall.toFixed(6)}`);
 
       if (opts.topupAmount != null && String(opts.topupAmount).trim() !== "") {
         const amt = Number(opts.topupAmount);
@@ -260,21 +262,21 @@ export async function invoke(opts) {
           return { ok: false, code: "AMOUNT_INVALID", details: { message: `Invalid --topup-amount: ${opts.topupAmount}`, appId } };
         }
         if (amt < minTopup) {
-          return { ok: false, code: "TOPUP_AMOUNT_TOO_SMALL", details: { message: `--topup-amount ${amt} USDG is below the ${minTopup} USDG minimum.`, minTopup, appId } };
+          return { ok: false, code: "TOPUP_AMOUNT_TOO_SMALL", details: { message: `--topup-amount ${amt} ${sym} is below the ${minTopup} ${sym} minimum.`, minTopup, appId } };
         }
         topupAmount = String(opts.topupAmount);
       } else if (process.stdin.isTTY) {
         topupAmount = await promptTopupAmount(minTopup);
-        logInfo(`Selected top-up amount: ${topupAmount} USDG`);
+        logInfo(`Selected top-up amount: ${topupAmount} ${sym}`);
       } else {
         return {
           ok: false, code: "TOPUP_REQUIRED",
           details: {
-            message: `USDG balance is below the ${minTopup} USDG minimum. Rerun with --topup-amount <usdg>.`,
+            message: `${sym} balance is below the ${minTopup} ${sym} minimum. Rerun with --topup-amount <n>.`,
             minTopup, required: requiredUsdt, currentBalance: balanceInitialUsdt,
             address: sessionAddress, appId,
             presets: TOPUP_PRESETS.filter((v) => v >= minTopup),
-            hint: `Rerun: aigateway wallet-topup --amount <usdg> --app-id ${appId}`,
+            hint: `Rerun: aigateway wallet-topup --amount <n> --app-id ${appId}`,
           },
         };
       }
@@ -289,10 +291,11 @@ export async function invoke(opts) {
 
   if (needTopup) {
     if (isOkx) {
+      const sym = getChainConfig().tokenSymbol;
       return {
-        ok: false, code: "INSUFFICIENT_USDT",
+        ok: false, code: "INSUFFICIENT_BALANCE",
         details: {
-          message: `Insufficient USDG. Please send at least ${topupAmount} USDG to your OKX wallet on X Layer.`,
+          message: `Insufficient ${sym}. Please send at least ${topupAmount} ${sym} to your wallet.`,
           address: config.address, shortfall: topupAmount,
           hint: `Run: aigateway wallet-topup to see deposit instructions.`, appId,
         },
@@ -316,8 +319,8 @@ export async function invoke(opts) {
       balanceBeforeChargeUsdt = recheck.usdt;
       if (parseFloat(recheck.usdt) < requiredUsdt) {
         return {
-          ok: false, code: "INSUFFICIENT_USDT",
-          details: { message: "Still insufficient USDG after funding.", required: `${requiredUsdt} USDG`, available: `${recheck.usdt} USDG`, address: sessionAddress, appId },
+          ok: false, code: "INSUFFICIENT_BALANCE",
+          details: { message: `Still insufficient ${getChainConfig().tokenSymbol} after funding.`, required: `${requiredUsdt} ${getChainConfig().tokenSymbol}`, available: `${recheck.usdt} ${getChainConfig().tokenSymbol}`, address: sessionAddress, appId },
         };
       }
     } catch (e) {
@@ -417,6 +420,7 @@ export async function invoke(opts) {
         after: balanceAfterUsdt,         // U total after charge
         charged: requiredUsdt,
         topup: topupAmount,
+        tokenSymbol: getChainConfig().tokenSymbol, // actual settlement token (USDG/USDT) — render from this, never hardcode
       },
     },
   };

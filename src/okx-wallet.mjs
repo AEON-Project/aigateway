@@ -97,12 +97,21 @@ export async function logout() {
 
 export async function getOkxEvmAddress() {
   const result = await run(['wallet', 'balance']);
-  // Scenario 1 response: evmAddress is a top-level field
-  if (result.evmAddress && /^0x[a-fA-F0-9]{40}$/.test(result.evmAddress)) {
-    return result.evmAddress;
+  const isEvm = (v) => typeof v === 'string' && /^0x[a-fA-F0-9]{40}$/.test(v);
+
+  // Preferred: explicit top-level field.
+  if (isEvm(result.evmAddress)) return result.evmAddress;
+
+  // The account's EVM address is the same on every EVM chain (HD EOA). Read it
+  // from the wallet `address` key of any tokenAsset — never from `tokenAddress`
+  // (a token *contract*) or `payTo` etc., so field ordering can't fool us.
+  const assets = result.data?.details?.flatMap((d) => d?.tokenAssets ?? []) ?? [];
+  for (const a of assets) {
+    if (isEvm(a?.address)) return a.address;
   }
-  // Fallback: scan the JSON for the first 0x address
-  const match = JSON.stringify(result).match(/"(0x[a-fA-F0-9]{40})"/);
+
+  // Fallback: match the `"address"` key specifically (not any 0x string).
+  const match = JSON.stringify(result).match(/"address"\s*:\s*"(0x[a-fA-F0-9]{40})"/);
   if (!match) {
     throw new Error(
       'Cannot read OKX wallet EVM address. ' +

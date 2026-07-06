@@ -13,6 +13,7 @@
  */
 import { createInterface } from 'node:readline/promises';
 import { loadConfig, saveConfig } from '../config.mjs';
+import { getChainConfig } from '../chain-config.mjs';
 import {
   checkOnchainos,
   installOnchainos,
@@ -75,7 +76,7 @@ export async function setWalletMode(mode, opts = {}) {
         config.address = address;
         saveConfig(config);
         emitOk('wallet-mode',
-          { mode: 'okx', address, alreadyConfigured: true },
+          { mode: 'okx', address, alreadyConfigured: true, provider: getChainConfig('okx').provider },
           { mode: 'okx', address, alreadyConfigured: true });
         return;
       }
@@ -194,10 +195,12 @@ async function _verifyAndFinalise(otp) {
 
 async function _finalise(authMethod) {
   logInfo('Reading OKX wallet EVM address...');
+  const cfg = getChainConfig('okx');
+  const network = `${cfg.chain.name} (Chain ID: ${cfg.chain.id})`;
   let address;
   try {
     address = await getOkxEvmAddress();
-    logInfo(`✓ OKX wallet: ${address} (BSC)`);
+    logInfo(`✓ OKX wallet: ${address} (${network})`);
   } catch (err) {
     emitErr('wallet-mode', 'OKX_WALLET_NOT_FOUND', { message: err.message });
     return;
@@ -208,7 +211,9 @@ async function _finalise(authMethod) {
   delete config._okxPendingEmail;
   saveConfig(config);
   logInfo('✓ Saved to ~/.aigateway/config.json');
-  emitOk('wallet-mode', { mode: 'okx', address, authMethod }, { mode: 'okx', address, authMethod });
+  emitOk('wallet-mode',
+    { mode: 'okx', address, authMethod, network, tokenSymbol: cfg.tokenSymbol, provider: cfg.provider },
+    { mode: 'okx', address, authMethod });
 }
 
 async function _interactiveSetup() {

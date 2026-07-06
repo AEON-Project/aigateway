@@ -78,7 +78,8 @@ export async function topup(opts) {
   if (!needTopup && !needApprove) {
     logInfo(`Wallet already has sufficient ${cfg.tokenSymbol} balance.`);
     emitOk("wallet-topup", {
-      ready: true, appId, address, usdt: preBal.usdt, topup: null,
+      ready: true, appId, address, paymentBalance: preBal.payment, usdt: preBal.usdt, topup: null,
+      tokenSymbol: cfg.tokenSymbol, provider: cfg.provider,
     }, { ready: true, success: true });
     return;
   }
@@ -154,7 +155,9 @@ export async function topup(opts) {
 
   emitOk("wallet-topup", {
     ready: true, appId, address,
+    paymentBalance: finalBal.payment ?? finalBal.usdt,
     usdt: finalBal.usdt,
+    tokenSymbol: cfg.tokenSymbol, provider: cfg.provider,
     topup: { amount: topupAmount },
   }, { ready: true, success: true, usdt: finalBal.usdt });
 }

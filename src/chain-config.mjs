@@ -25,6 +25,7 @@ export function getChainConfig(mode) {
       nativeSymbol:  "OKB",
       wcChainId:     "eip155:196",
       networkName:   "X Layer (ERC20)",
+      provider:      "OKX Agentic Wallet",
     };
   }
   // session-key (opt-in) → BSC + USDT
@@ -37,5 +38,15 @@ export function getChainConfig(mode) {
     nativeSymbol:  "BNB",
     wcChainId:     "eip155:56",
     networkName:   "BNB Chain(BEP20) only",
+    provider:      "Aeon Agentic Wallet",
   };
+}
+
+/**
+ * Human-facing network label, e.g. "X Layer (Chain ID: 196)".
+ * Single source of truth so every command/envelope reports it identically.
+ */
+export function networkLabel(mode) {
+  const cfg = getChainConfig(mode);
+  return `${cfg.chain.name} (Chain ID: ${cfg.chain.id})`;
 }

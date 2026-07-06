@@ -38,9 +38,14 @@ function makeClient(cfg) {
 
 /**
  * Query native coin and payment token balance for an address.
- * Chain/token are determined by current config.mode.
- * Field names `bnb`/`bnbRaw` represent the native gas token (BNB on BSC, OKB on X Layer).
- * Field names `usdt`/`usdtRaw` represent the payment token (USDT on BSC, USDG on X Layer).
+ * Chain/token are determined by current config.mode — the caller never needs
+ * to know which chain it is.
+ *
+ * Canonical fields (mode-neutral):
+ *   `payment` / `paymentRaw` — payment token balance (USDG on X Layer, USDT on BSC)
+ *   `gas`     / `gasRaw`     — native gas token balance (OKB on X Layer, BNB on BSC)
+ * Deprecated aliases `usdt`/`usdtRaw`/`bnb`/`bnbRaw` mirror the canonical fields
+ * for backward compatibility; prefer the neutral names in new code.
  */
 export async function getBalanceByAddress(address, opts = {}) {
   const cfg = getChainConfig();
@@ -56,13 +61,16 @@ export async function getBalanceByAddress(address, opts = {}) {
     }),
   ]);
 
+  const payment = formatUnits(tokenRaw, cfg.tokenDecimals);
+  const gas     = formatUnits(nativeRaw, 18);
   return {
     address,
-    bnb:     formatUnits(nativeRaw, 18),
-    usdt:    formatUnits(tokenRaw, cfg.tokenDecimals),
-    bnbRaw:  nativeRaw,
-    usdtRaw: tokenRaw,
-    // X Layer has no campaign token
+    payment, paymentRaw: tokenRaw,
+    gas,     gasRaw:     nativeRaw,
+    // deprecated aliases (kept for back-compat)
+    usdt: payment, usdtRaw: tokenRaw,
+    bnb:  gas,     bnbRaw:  nativeRaw,
+    // no campaign token on either chain
     token:    "0",
     tokenRaw: 0n,
   };

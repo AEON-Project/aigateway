@@ -22,13 +22,13 @@ The full set of `error.code` values is defined in [`src/error-codes.mjs`](../src
 | `SERVICE_URL_MISSING` | Service URL not configured. |
 | `AMOUNT_INVALID` | Amount could not be parsed (e.g. `wallet-topup --amount`, `--topup-amount`). |
 | `AMOUNT_EXCEEDS_BALANCE` | `wallet-withdraw --amount` exceeds available balance of the chosen `--token`. |
-| `INSUFFICIENT_USDT` | USDT balance still insufficient after funding. |
-| `INSUFFICIENT_TOKEN` | Coupon token balance < required (server requested token but balance is short). Retry — server will fall back to USDT on next 402. |
-| `INSUFFICIENT_BNB` | No BNB for approve / withdraw gas. |
-| `NO_FUNDS` | Session wallet has zero USDT and zero BNB (withdraw context). |
+| `INSUFFICIENT_BALANCE` | Payment-token balance still insufficient after funding. (Deprecated alias: `INSUFFICIENT_USDT`.) |
+| `INSUFFICIENT_TOKEN` | Reward-token balance < required. Retry — the server settles from the main balance on the next 402. |
+| `INSUFFICIENT_GAS` | Not enough native gas token for approve / withdraw gas. (Deprecated alias: `INSUFFICIENT_BNB`.) |
+| `NO_FUNDS` | Wallet has zero payment token and zero gas token (withdraw context). |
 | `NO_MAIN_WALLET` | `wallet-withdraw` invoked without `--to` and no `mainWallet` in config. |
 | `NEEDS_AMOUNT` | `wallet-withdraw` in non-TTY shell without both `--amount` and `--token`, or only one of the pair supplied. |
-| `INVALID_TOKEN` | `wallet-withdraw --token` is not `USDT` or `BNB`. |
+| `INVALID_WITHDRAW_TOKEN` | `wallet-withdraw --token` does not match the wallet's payment or gas token (use the envelope's `tokenSymbol` / `nativeSymbol`). (Deprecated alias: `INVALID_TOKEN`.) |
 | `MISSING_MODEL` | `sb invoke` invoked without `--model`. |
 | `MISSING_INPUTS` | `sb invoke --inputs` is missing, or required fields are absent. `error.errors[]` lists which. |
 | `INVALID_INPUTS` | Inputs failed schema validation. `error.errors[].kind ∈ {enum, type, range}`. |

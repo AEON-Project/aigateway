@@ -19,6 +19,7 @@ export async function initWallet(opts) {
     const config = loadConfig();
     const {appId} = opts;
     const cfg = getChainConfig();
+    const network = `${cfg.chain.name} (Chain ID: ${cfg.chain.id})`;
 
     // ── OKX mode (default) ────────────────────────────────────────────────────
     if (config.mode === 'okx') {
@@ -42,7 +43,8 @@ export async function initWallet(opts) {
                 logInfo(`Status    : Provisioning...`);
                 emitOk("wallet-init", {
                     ready: false, mode: 'okx', needsTopup: false, topupReason: null,
-                    tokenSymbol: cfg.tokenSymbol, okxSessionExpired: true, address: config.address, appId,
+                    tokenSymbol: cfg.tokenSymbol, network, provider: cfg.provider,
+                    okxSessionExpired: true, address: config.address, appId,
                     message: "OKX session expired. Re-authenticate: aigateway wallet-mode okx --email <email>",
                 }, {ready: false, mode: 'okx', okxSessionExpired: true, appId});
                 return;
@@ -58,8 +60,8 @@ export async function initWallet(opts) {
             usdt = bal.usdt;
             bnb = bal.bnb;
             usdtNum = parseFloat(usdt);
-            logInfo(`Wallet: ${config.address} Ready.`);
-            logInfo(`Balance: ${usdt} USDG, ${bnb} OKB`);
+            logInfo(`Wallet: ${config.address} Ready. (${network})`);
+            logInfo(`Balance: ${usdt} ${cfg.tokenSymbol}, ${bnb} ${cfg.nativeSymbol}`);
         } catch (e) {
             chainCheckOk = false;
             chainCheckError = e.message;
@@ -77,7 +79,8 @@ export async function initWallet(opts) {
 
         emitOk("wallet-init", {
             ready: true, mode: 'okx', appId, address: config.address,
-            usdt, bnb, needsTopup, topupReason,
+            paymentBalance: usdt, gasBalance: bnb,
+            usdt, bnb, needsTopup, topupReason, network, provider: cfg.provider,
             tokenSymbol: cfg.tokenSymbol, nativeSymbol: cfg.nativeSymbol,
             minTopup: MIN_TOPUP_USDT, presets: TOPUP_PRESETS,
             chainCheck: chainCheckOk ? "ok" : {error: chainCheckError},
@@ -116,7 +119,7 @@ export async function initWallet(opts) {
             usdt = bal.usdt;
             bnb = bal.bnb;
             usdtNum = parseFloat(usdt);
-            logInfo(`Balance: ${usdt} USDT, ${bnb} BNB`);
+            logInfo(`Balance: ${usdt} ${cfg.tokenSymbol}, ${bnb} ${cfg.nativeSymbol}`);
             allowance = await getAllowance(config.address);
             logInfo(`Allowance: ${allowance === 0n ? "0 (approve required)" : "already approved"}`);
         } catch (e) {
@@ -152,7 +155,8 @@ export async function initWallet(opts) {
         deviceId,
         mainWallet: config.mainWallet || null,
         serviceUrl: config.serviceUrl || null,
-        usdt, bnb, needsTopup, topupReason,
+        paymentBalance: usdt, gasBalance: bnb,
+        usdt, bnb, needsTopup, topupReason, network, provider: cfg.provider,
         tokenSymbol: cfg.tokenSymbol, nativeSymbol: cfg.nativeSymbol,
         minTopup: MIN_TOPUP_USDT, presets: TOPUP_PRESETS,
         chainCheck: chainCheckOk ? "ok" : {error: chainCheckError},

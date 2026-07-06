@@ -8,10 +8,10 @@ Map each `error.code` returned by the envelope to a concrete recovery action. Us
 | `SERVICE_URL_MISSING` | 1 | Override via env `AIGATEWAY_SERVICE_URL`. The default service URL is wired into the CLI for production; this should never trigger in normal use. |
 | `AMOUNT_INVALID` | 1 | Caller bug — input must be a positive numeric string (used by `wallet-topup`, `wallet-gas`, `wallet-withdraw`, `--topup-amount`). |
 | `AMOUNT_EXCEEDS_BALANCE` | 1 | `wallet-withdraw --amount` exceeded available balance of `--token`. `error.token` says which asset; use smaller of requested vs. `error.available`. |
-| `NEEDS_AMOUNT` | 1 | Non-TTY `wallet-withdraw` requires both `--amount <n>` and `--token <USDT\|BNB>`. Re-run with both. |
-| `INVALID_TOKEN` | 1 | `wallet-withdraw --token` must be `USDT` or `BNB`. |
-| `INSUFFICIENT_USDT` | 1 | Top-up failed or the chosen `--topup-amount` was still below the call's required USDT. Surface `error.required` / `error.available`; ask the user to retry with a larger top-up. |
-| `INSUFFICIENT_BNB` | 1 | Approve / withdraw needs BNB for gas. Run `aigateway wallet-gas` (WalletConnect, must be interactive), then retry. |
+| `NEEDS_AMOUNT` | 1 | Non-TTY `wallet-withdraw` requires both `--amount <n>` and `--token <symbol>` (use the envelope's `tokenSymbol`/`nativeSymbol`). Re-run with both. |
+| `INVALID_WITHDRAW_TOKEN` | 1 | `wallet-withdraw --token` must match the wallet's payment or gas token (envelope `tokenSymbol`/`nativeSymbol`). (Deprecated alias: `INVALID_TOKEN`.) |
+| `INSUFFICIENT_BALANCE` | 1 | Top-up failed or the chosen `--topup-amount` was still below the call's required amount. Surface `error.required` / `error.available`; ask the user to retry with a larger top-up. (Deprecated alias: `INSUFFICIENT_USDT`.) |
+| `INSUFFICIENT_GAS` | 1 | Approve / withdraw needs the native gas token. Run `aigateway wallet-gas` (WalletConnect, must be interactive), then retry. (Deprecated alias: `INSUFFICIENT_BNB`.) |
 | `NO_FUNDS` | 1 | Nothing to withdraw. Inform the user; suggest `wallet-topup` if relevant. |
 | `NO_MAIN_WALLET` | 1 | `wallet-withdraw` invoked with no `mainWallet` saved. Re-run with `--to <address>`. |
 | `MISSING_MODEL` | 1 | `sb invoke --model` is required. Run `aigateway sb tools` to pick one. |

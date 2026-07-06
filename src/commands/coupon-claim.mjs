@@ -95,7 +95,7 @@ export async function couponClaim(opts) {
   if (status.claimed && status.mintStatus === "FAILED") {
     logInfo(`Previous claim FAILED (${status.errorMsg || "no error msg"}), retrying...`);
   }
-  logInfo("🎁 Claiming AEON x BNB campaign coupon, please wait...");
+  logInfo("🎁 Claiming AEON campaign coupon, please wait...");
   const result = await claimCoupon({
     serviceUrl,
     userAddress,

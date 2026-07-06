@@ -52,11 +52,14 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
   "deviceId": "uuid...",
   "mainWallet": "0x..." | null,
   "serviceUrl": "https://...",
-  "usdt": "5.0",
-  "withdrawableUsdt": "1.0",
-  "campaignReward": "4.0" | null,
-  "campaignActive": true,
-  "bnb": "0.0003",
+  "provider": "Aeon Agentic Wallet",     // ready-to-print brand
+  "network": "BNB Smart Chain (Chain ID: 56)",  // ready-to-print network label
+  "paymentBalance": "5.0",               // payment token balance
+  "gasBalance": "0.0003",                // native gas token balance
+  "tokenSymbol": "USDT",                 // payment token label
+  "nativeSymbol": "BNB",                 // native gas token label
+  "usdt": "5.0",                         // deprecated alias of paymentBalance
+  "bnb": "0.0003",                       // deprecated alias of gasBalance
   "allowance": "115792...max" | "0",
   "needsTopup": false,
   "topupReason": null | "first_time" | "low_balance" | "no_approve" | "chain_check_failed",
@@ -66,7 +69,7 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
 }
 ```
 
-`usdt` / `withdrawableUsdt` / `campaignReward` / `campaignActive` have the same semantics as in [`wallet-balance`](#wallet-balance) — see that section for the user-facing rendering rule.
+**Rendering**: relay `provider` / `network` / `tokenSymbol` / `paymentBalance` verbatim; never hardcode a brand, chain, or token. `usdt`/`bnb` are deprecated aliases of `paymentBalance`/`gasBalance`.
 
 ### `wallet-topup`
 
@@ -143,11 +146,13 @@ Every `aigateway` command emits **exactly one line of JSON** to **stdout** — t
     "tokenAfter": "4.99",
     "totalUAfter": "5.99",
     "charged": 0.01,
-    "topup": null | "5"
+    "topup": null | "5",
+    "tokenSymbol": "USDG" | "USDT"
   }
 }
 ```
 
+- `balance.tokenSymbol` is the **actual settlement token** for the active mode (USDG on X Layer / USDT on BSC). Agents MUST render the currency label from this field — never hardcode it.
 - **Binary outputs** (image / video / audio) populate `downloaded[]`. With `--raw` the auto-download is skipped and `downloaded[]` stays empty; the URLs live in `raw`.
 - **JSON-only outputs** (search, scraper, social_data, email, etc.) leave `downloaded` empty; consumers read `raw`.
 - `balance.charged` is the live U amount taken for this call (computed server-side as `priceUnit × inputs usage`).
@@ -191,22 +196,20 @@ Failure shapes carry extra fields per code, e.g.:
 {
   "mode": "private-key",
   "address": "0x...",
-  "usdt": "6.0",
-  "withdrawableUsdt": "1.0",
-  "campaignReward": "5.0" | null,
-  "campaignActive": true,
-  "bnb": "0.0003",
-  "network": "BSC Mainnet (Chain ID: 56)",
-  "mainWallet": { "address": "0x...", "usdt": "..." }
+  "provider": "Aeon Agentic Wallet",
+  "network": "BNB Smart Chain (Chain ID: 56)",
+  "paymentBalance": "6.0",
+  "gasBalance": "0.0003",          // absent in OKX mode (gas handled internally)
+  "tokenSymbol": "USDT",
+  "nativeSymbol": "BNB",
+  "usdt": "6.0",                   // deprecated alias of paymentBalance
+  "bnb": "0.0003"                  // deprecated alias of gasBalance
 }
 ```
 
-- `usdt` = merged U total. When `campaignActive: true`, this is `withdrawableUsdt + campaignReward`; otherwise it equals `withdrawableUsdt`.
-- `withdrawableUsdt` = pure on-chain USDT balance — the **only** portion that can be moved to the main wallet via `wallet-withdraw --token USDT`.
-- `campaignReward` = activity reward U (the `CAMPAIGN_TOKEN_ADDRESS` balance). Non-withdrawable; spendable only via `sb invoke`. `null` when `campaignActive: false`.
-- `campaignActive` = whether the server reports the campaign as currently running. When `false`, agents should treat `withdrawableUsdt` as the user-facing balance.
-
-⚠️ When rendering to the end user, **always present `withdrawableUsdt` and `campaignReward` as separate values** when the campaign is active. Never display the merged `usdt` as a single "USDT" number, since the user may then expect the whole amount to be withdrawable.
+- `provider` / `network` / `tokenSymbol` / `nativeSymbol` are **ready-to-print labels** — relay them verbatim; never hardcode a brand, chain, or token.
+- `paymentBalance` = the payment token balance (USDG on X Layer, USDT on BSC). `gasBalance` = native gas token; **absent in OKX mode** (gas is handled internally — don't show it).
+- `usdt` / `bnb` are deprecated aliases of `paymentBalance` / `gasBalance`; prefer the neutral names.
 
 ### `wallet-gas`
 
