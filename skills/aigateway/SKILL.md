@@ -30,7 +30,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.4.6"
+  version: "0.4.7"
   author: AEON-Project
   openclaw:
     requires:
@@ -284,10 +284,12 @@ When done, re-run `aigateway wallet-init`.
 | --- | --- |
 | `mode: "okx"`, `okxSessionExpired: true` | OKX session expired — guide user to re-authenticate (see below) |
 | `mode: "okx"`, `topupReason: "okx_not_configured"` | OKX wallet not set up yet. Guide user to run `wallet-mode okx` (see OKX setup below) |
-| `created: true` | Render the **wallet card** below (with "Auto-creating your dedicated wallet..." as the first line), then follow the `needsTopup` branch |
+| `created: true` | Render the **wallet card** below (with "Auto-creating your dedicated wallet..." as the first line), then show the **Capability overview** below, then follow the `needsTopup` branch |
 | `created: false`, `ready: true` | Output "{addr first 3}...{last 4} Ready. ({paymentBalance} {tokenSymbol})" |
-| **`needsTopup: true`** | Render the **wallet card** below, then **jump immediately to Phase 2.** Use `presets` / `minTopup` from the envelope |
+| **`needsTopup: true`** | Render the **wallet card** below; when the wallet has **no funds yet** (`paymentBalance` is `0`, i.e. the user hasn't started — covers a just-created session-key wallet **and** a freshly set-up OKX wallet), also show the **Capability overview**; then **jump to Phase 2.** Use `presets` / `minTopup` from the envelope |
 | `needsTopup: false` | Wallet ready, continue to Phase 3 |
+
+> **Order on first run**: wallet card → Capability overview → top-up prompt. Showing what the wallet *unlocks* before asking the user to fund it makes the top-up feel worthwhile.
 
 **Wallet card** (render when the wallet was just created or has no funds; translate phrasing to the user's locale, preserve structure):
 
@@ -300,6 +302,34 @@ Wallet ({address first 3}...{last 4}):
 
 Your wallet is set up but has no funds yet. Top up with {presets joined by " / "} {tokenSymbol} to start making paid calls.
 ```
+
+### Capability overview (first-time onboarding)
+
+Right after the wallet card on a wallet with **no funds yet** (a first-time wallet in either mode), and whenever the user asks "what can I do?", give the user a quick menu of what they can do. **Fetch it live and derive the list from the catalog — never hardcode categories or counts:**
+
+```bash
+aigateway sb tools
+```
+
+From `data.categories[]`, render **one compact line per category** the catalog actually returns — an emoji + the category label + a short "what it does" hint (use each category's `agentTrigger` / model `useCase` as the hint source). Then invite the user to name a task. Translate the phrasing to the user's locale; keep it scannable, don't dump models or prices here. Example **shape** (match your lines to the live categories — omit any the catalog doesn't return, add any it does):
+
+```
+🎉 Your wallet is ready — here's what you can do:
+
+🎨  Image       generate & edit images
+🎬  Video       text-to-video, short clips
+🔊  Audio       text-to-speech & transcription
+🔍  Search      web search & page scraping
+📇  Data        social / business profiles
+✉️   Messaging   send email & SMS
+📄  Document    parse PDF / DOCX
+🧩  UI          landing pages & slide decks
+📈  Finance     crypto / stock / FX / weather
+
+Just tell me what you'd like — e.g. "draw a poster", "transcribe this recording", or "search the latest news on …".
+```
+
+If `sb tools` fails (`CATALOG_FETCH_FAILED`), skip the overview silently — don't invent categories; proceed to the top-up / next step.
 
 All values come straight from the envelope: `{provider}`, `{network}`, `{tokenSymbol}`, `{paymentBalance}`. Never hardcode a brand, chain, or token, and never surface the raw `mode` value — the CLI now returns a ready-to-print `provider` string.
 
