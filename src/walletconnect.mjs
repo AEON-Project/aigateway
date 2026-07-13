@@ -600,16 +600,24 @@ export async function connectWallet(signClient, statusPort, amount = null, token
  * Request an ERC-20 token transfer
  * @param {SignClient} signClient
  * @param {object} session - WalletConnect session
- * @param {{ from: string, to: string, token: string, amount: string, decimals?: number }} params
+ * @param {{ from: string, to: string, token: string, amount: string, decimals?: number, gas?: bigint }} params
+ *        gas — optional gas limit (already buffered). When omitted, the field is
+ *        left out entirely so the wallet estimates it. Never hardcode a limit:
+ *        token gas cost is chain/token-specific (e.g. USDG on X Layer is a proxy
+ *        and needs ~66k, more than a BSC USDT transfer), and a too-low value
+ *        makes the wallet report an opaque "third-party contract execution error".
  * @returns {string} transaction hash
  */
-export async function requestERC20Transfer(signClient, session, { from, to, token, amount, decimals = 18 }) {
+export async function requestERC20Transfer(signClient, session, { from, to, token, amount, decimals = 18, gas }) {
   const value = parseUnits(amount, decimals);
   const data = encodeFunctionData({
     abi: ERC20_TRANSFER_ABI,
     functionName: "transfer",
     args: [to, value],
   });
+
+  const txParams = { from, to: token, data };
+  if (gas != null) txParams.gas = "0x" + BigInt(gas).toString(16);
 
   const TX_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
   const txHash = await Promise.race([
@@ -618,14 +626,7 @@ export async function requestERC20Transfer(signClient, session, { from, to, toke
       chainId: session.namespaces.eip155.accounts[0].split(":").slice(0,2).join(":"),
       request: {
         method: "eth_sendTransaction",
-        params: [
-          {
-            from,
-            to: token,
-            data,
-            gas: "0xFDE8", // 65000 — ERC20.transfer contract call
-          },
-        ],
+        params: [txParams],
       },
     }),
     new Promise((_, reject) =>

@@ -10,9 +10,15 @@ import {
   withWallet,
   requestERC20Transfer,
   setStatus,
+  WalletConnectError,
 } from "./walletconnect.mjs";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, parseUnits, formatUnits } from "viem";
 import { getChainConfig } from "./chain-config.mjs";
+
+const ERC20_MIN_ABI = [
+  { name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ name: "a", type: "address" }], outputs: [{ type: "uint256" }] },
+  { name: "transfer", type: "function", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "v", type: "uint256" }], outputs: [{ type: "bool" }] },
+];
 import { createInterface } from "node:readline/promises";
 import { logInfo } from "./output.mjs";
 
@@ -77,14 +83,48 @@ export async function fundSessionKey({ sessionAddress, usdtAmount, needGas = fal
     if (usdtAmount) {
       setStatus("signing", { amount: usdtAmount, token: cfg.tokenSymbol, to: sessionAddress });
       logInfo(`\nRequesting ${cfg.tokenSymbol} transfer: ${usdtAmount} ${cfg.tokenSymbol} → ${sessionAddress}`);
-      logInfo("Please confirm the transaction in your wallet app...");
 
+      const amountWei = parseUnits(usdtAmount, cfg.tokenDecimals);
+
+      // Precheck the connected wallet actually holds enough of the token, and
+      // estimate the gas limit. Otherwise the transfer reverts and the wallet
+      // surfaces an opaque "third-party contract execution error" — the two
+      // real causes (no token balance / gas limit too low for this token) are
+      // caught here with actionable messages instead.
+      let gasLimit;
+      try {
+        const held = await publicClient.readContract({
+          address: cfg.token, abi: ERC20_MIN_ABI, functionName: "balanceOf", args: [peerAddress],
+        });
+        if (held < amountWei) {
+          throw new WalletConnectError(
+            "WALLET_ERROR",
+            `The connected wallet holds ${formatUnits(held, cfg.tokenDecimals)} ${cfg.tokenSymbol}, but ${usdtAmount} ${cfg.tokenSymbol} is needed. Add ${cfg.tokenSymbol} to that wallet, then try again.`,
+          );
+        }
+        // Estimate gas + 40% buffer — token transfer cost is chain/token-specific
+        // (e.g. USDG on X Layer is a proxy needing ~66k). Never hardcode it.
+        const est = await publicClient.estimateContractGas({
+          address: cfg.token, abi: ERC20_MIN_ABI, functionName: "transfer",
+          args: [sessionAddress, amountWei], account: peerAddress,
+        });
+        gasLimit = (est * 140n) / 100n;
+      } catch (e) {
+        if (e instanceof WalletConnectError) throw e;
+        // Estimation failed for a non-balance reason — fall back to letting the
+        // wallet estimate (omit gas) rather than shipping a too-low hardcoded limit.
+        logInfo(`Gas estimate unavailable (${e.shortMessage || e.message}); the wallet will estimate.`);
+        gasLimit = undefined;
+      }
+
+      logInfo("Please confirm the transaction in your wallet app...");
       const txHash = await requestERC20Transfer(signClient, session, {
         from: peerAddress,
         to: sessionAddress,
         token: cfg.token,
         amount: usdtAmount,
         decimals: cfg.tokenDecimals,
+        gas: gasLimit,
       });
       setStatus("tx_submitted", { txHash, amount: usdtAmount, token: cfg.tokenSymbol });
       logInfo(`${cfg.tokenSymbol} transfer submitted: ${txHash}`);
