@@ -375,6 +375,20 @@ export async function invoke(opts) {
 
   const transaction = response.data?.transaction || paymentResponse?.txHash || null;
 
+  // The upstream vendor injects self-update nags (`_skills_update_message`,
+  // `_balance_warning`, …) aimed at a *different* client — surfacing them would
+  // tell aigateway users to run an unrelated SkillBoss install script. Strip
+  // these vendor-CLI fields so they never leak into what the agent renders.
+  const sanitizeRaw = (r) => {
+    if (!r || typeof r !== "object" || Array.isArray(r)) return r;
+    const out = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (k.startsWith("_skills_") || k === "_balance_warning") continue;
+      out[k] = v;
+    }
+    return out;
+  };
+
   // Detect downloadable outputs and fetch them locally (unless --raw).
   let downloaded = [];
   if (!opts.raw) {
@@ -411,7 +425,7 @@ export async function invoke(opts) {
       transaction,
       downloaded,
       // unwrap server envelope: { payer, transaction, data: <upstream-response> } → <upstream-response>
-      raw: response.data?.data ?? response.data,
+      raw: sanitizeRaw(response.data?.data ?? response.data),
       paymentResponse,
       paymentMethod: paymentReq.asset,
       balance: {

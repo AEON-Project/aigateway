@@ -10,6 +10,7 @@ import { bsc, xLayer } from "viem/chains";
 import { BSC_RPC_URL, XLAYER_RPC_URL } from "./constants.mjs";
 import axios from "axios";
 import { signEIP712WithOkx, contractCallWithOkx } from "./okx-wallet.mjs";
+import { getChainConfig } from "./chain-config.mjs";
 
 /**
  * Build an x402 axios client with the EVM signer pre-registered.
@@ -127,8 +128,12 @@ export async function fetchPaymentRequirements(url, options = {}) {
     const data = err.response.data;
     const rawAccepts = Array.isArray(data?.accepts) ? data.accepts : [];
     if (rawAccepts.length === 0) throw new Error("No payment requirements in 402 response");
+    // Default to the active chain's token decimals (USDG=6 on X Layer, USDT=18
+    // on BSC) — never a blanket 18, which would misreport the charged amount for
+    // a 6-decimal token when the server omits `tokenDecimals`.
+    const fallbackDecimals = getChainConfig().tokenDecimals;
     const accepts = rawAccepts.map((a) => {
-      const decimals = a.tokenDecimals || 18;
+      const decimals = a.tokenDecimals ?? fallbackDecimals;
       const amountWei = BigInt(a.amount);
       return {
         amountUsdt: parseFloat(formatUnits(amountWei, decimals)),

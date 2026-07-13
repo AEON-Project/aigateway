@@ -79,9 +79,11 @@ export async function initWallet(opts) {
 
         emitOk("wallet-init", {
             ready: true, mode: 'okx', appId, address: config.address,
-            paymentBalance: usdt, gasBalance: bnb,
-            usdt, bnb, needsTopup, topupReason, network, provider: cfg.provider,
-            tokenSymbol: cfg.tokenSymbol, nativeSymbol: cfg.nativeSymbol,
+            // OKX handles gas internally — never surface gasBalance/nativeSymbol
+            // (matches wallet-balance okx), so the wallet card shows no gas line.
+            paymentBalance: usdt, usdt,
+            needsTopup, topupReason, network, provider: cfg.provider,
+            tokenSymbol: cfg.tokenSymbol,
             minTopup: MIN_TOPUP_USDT, presets: TOPUP_PRESETS,
             chainCheck: chainCheckOk ? "ok" : {error: chainCheckError},
         }, {ready: true, mode: 'okx', appId});

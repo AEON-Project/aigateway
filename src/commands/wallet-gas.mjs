@@ -29,6 +29,18 @@ export async function gas(opts) {
     return;
   }
 
+  // Gas is sponsored/handled automatically in OKX mode — a manual native-token
+  // top-up is unnecessary (and would open a confusing WalletConnect transfer to
+  // the agent wallet). No-op with a clear message instead.
+  if (config.mode === 'okx') {
+    logInfo("Gas is handled automatically — no top-up needed.");
+    emitOk("wallet-gas", {
+      appId, mode: 'okx', address: config.address, gasNeeded: false,
+      message: "Gas is handled automatically for this wallet; no top-up is required.",
+    }, { success: true, appId, gasNeeded: false });
+    return;
+  }
+
   const amount = opts.amount || DEFAULT_GAS_AMOUNT;
   // In session-key mode, always derive address from private key to avoid
   // using a stale config.address left over from a previous okx-mode switch.

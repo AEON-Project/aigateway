@@ -58,7 +58,7 @@ async function promptTokenAndAmount(balance, cfg) {
       const ans = (await rl.question(
         `Enter ${token} amount to withdraw (0 / number / all, available ${availableStr}): `,
       )).trim();
-      const raw = parseAmount(ans, available);
+      const raw = parseAmount(ans, available, token === cfg.tokenSymbol ? cfg.tokenDecimals : 18);
       if (raw === null) {
         logInfo("Invalid amount, please retry.");
         continue;
@@ -176,7 +176,7 @@ export async function withdraw(opts) {
     }
     token = t;
     const available = token === cfg.tokenSymbol ? balance.usdtRaw : balance.bnbRaw;
-    const parsed = parseAmount(opts.amount, available);
+    const parsed = parseAmount(opts.amount, available, token === cfg.tokenSymbol ? cfg.tokenDecimals : 18);
     if (parsed === null) {
       emitErr("wallet-withdraw", "AMOUNT_INVALID", {
         message: `Invalid --amount: ${opts.amount}`,

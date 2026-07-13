@@ -69,15 +69,18 @@ export function emitErr(command, code, details = {}) {
   if (LEGACY_MODE) {
     const legacyOut = legacy ?? { error: message, ...rest };
     console.error(JSON.stringify(legacyOut));
+    process.exit(exit);
   } else {
-    console.log(JSON.stringify({
+    const out = JSON.stringify({
       ok: false,
       command,
       version: VERSION,
       error: { code, message, ...rest },
-    }));
+    });
+    // stdout.write (not console.log) so the envelope survives the global
+    // console.log→stderr redirect and flushes before exit.
+    process.stdout.write(out + "\n", () => process.exit(exit));
   }
-  process.exit(exit);
 }
 
 /** Progress log (suppressed in quiet mode) */

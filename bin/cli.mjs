@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+// stdout is reserved for the single-line JSON envelope (emitOk/emitErr use
+// process.stdout.write). Third-party libs (@aeon-ai-pay/*) emit ungated
+// console.log debug lines that would otherwise corrupt that contract and break
+// consumers piping to jq. Route every console.log to stderr; our own logs
+// already use console.error.
+import { format } from "node:util";
+console.log = (...args) => process.stderr.write(format(...args) + "\n");
+
 const [major] = process.versions.node.split(".").map(Number);
 if (major < 25) {
   console.error(`aigateway requires Node.js >= 25. Current: v${process.versions.node}`);

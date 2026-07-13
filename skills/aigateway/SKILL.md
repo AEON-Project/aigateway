@@ -30,7 +30,7 @@ description: >
 emoji: "🛰️"
 homepage: https://github.com/AEON-Project/aigateway
 metadata:
-  version: "0.4.8"
+  version: "0.4.9"
   author: AEON-Project
   openclaw:
     requires:
@@ -311,7 +311,7 @@ Right after the wallet card on a wallet with **no funds yet** (a first-time wall
 aigateway sb tools
 ```
 
-From `data.categories[]`, render **one compact line per category** the catalog actually returns — an emoji + the category label + a short "what it does" hint (use each category's `agentTrigger` / model `useCase` as the hint source). Then invite the user to name a task. Translate the phrasing to the user's locale; keep it scannable, don't dump models or prices here. Example **shape** (match your lines to the live categories — omit any the catalog doesn't return, add any it does):
+From `data.categories[]`, render **one compact line per category that actually has models** (`models.length > 0` — **skip empty categories**, the catalog often returns categories with zero models) — an emoji + the category label + a short "what it does" hint (use each category's `agentTrigger` / model `useCase` as the hint source). Then invite the user to name a task. Translate the phrasing to the user's locale; keep it scannable, don't dump models or prices here. Example **shape** (match your lines to the live non-empty categories — omit any the catalog doesn't return or that has no models):
 
 ```
 🎉 Your wallet is ready — here's what you can do:

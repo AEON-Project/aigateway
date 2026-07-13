@@ -61,12 +61,18 @@ export function extractOutputs(responseData) {
 
   const inner = responseData?.data ?? responseData;
 
-  if (Array.isArray(inner?.images)) {
-    for (const img of inner.images) {
-      if (img?.url) items.push({ url: img.url });
+  // Image arrays may hold either objects ({url}) or plain URL strings, and come
+  // under several vendor-specific keys (images / generated_images / image_urls).
+  const urlOf = (x) => (typeof x === "string" ? x : x?.url);
+  for (const key of ["images", "generated_images", "image_urls"]) {
+    if (Array.isArray(inner?.[key])) {
+      for (const img of inner[key]) {
+        const u = urlOf(img);
+        if (typeof u === "string" && u) items.push({ url: u });
+      }
     }
-    if (items.length) kind = "image";
   }
+  if (items.length) kind = "image";
 
   const pushSingle = (url, inferred) => {
     if (!url || typeof url !== "string") return;
